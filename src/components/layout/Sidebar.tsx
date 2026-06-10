@@ -146,29 +146,29 @@ export const Sidebar: React.FC = () => {
   };
 
   // Mini divider for collapsed state
-  const MiniDivider = () => (
-    <div className="w-8 mx-auto my-1.5">
+  const renderMiniDivider = (key: string) => (
+    <div key={key} className="w-8 mx-auto my-1.5">
       <div className="h-px bg-white/[0.07]" />
     </div>
   );
 
   // Section divider — YouTube style thin line
-  const Divider = () => (
-    <div className="mx-3 my-3">
+  const renderDivider = (key: string) => (
+    <div key={key} className="mx-3 my-3">
       <div className="h-px bg-white/10" />
     </div>
   );
 
   // Section header with optional icon — YouTube "You >" style
-  const SectionHeader = ({ title, showArrow = false }: { title: string; showArrow?: boolean }) => (
+  const renderSectionHeader = (title: string, showArrow = false) => (
     <div className="flex items-center gap-1 px-5 pt-2 pb-1">
       <h3 className="text-[15px] font-medium text-text-primary tracking-tight">{title}</h3>
       {showArrow && <ChevronRight className="w-4 h-4 text-text-primary mt-[1px]" />}
     </div>
   );
 
-  const SidebarContent = ({ expanded = true }: { expanded?: boolean }) => {
-    if (!expanded) {
+  const renderSidebarContent = () => {
+    if (!sidebarExpanded) {
       // YouTube-like mini-sidebar — polished icon column
       return (
         <div className="relative flex flex-col h-full bg-bg-sidebar select-none items-center overflow-y-auto overflow-x-hidden scrollbar-pink">
@@ -176,17 +176,17 @@ export const Sidebar: React.FC = () => {
             {/* Main */}
             {mainItems.map(renderMiniItem)}
             
-            <MiniDivider />
+            {renderMiniDivider('div-1')}
             
             {/* Library */}
             {libraryItems.map(renderMiniItem)}
             
-            <MiniDivider />
+            {renderMiniDivider('div-2')}
             
             {/* Content */}
             {contentItems.map(renderMiniItem)}
             
-            <MiniDivider />
+            {renderMiniDivider('div-3')}
             
             {/* Settings */}
             {systemItems.slice(1).map(renderMiniItem)}
@@ -234,37 +234,37 @@ export const Sidebar: React.FC = () => {
             {mainItems.map(renderNavItem)}
           </nav>
 
-          <Divider />
+          {renderDivider('div-1')}
 
           {/* Section 2: Anda (You) — YouTube "You >" style header */}
           <div className="flex flex-col pb-1">
-            <SectionHeader title="Anda" showArrow />
+            {renderSectionHeader('Anda', true)}
             <nav className="flex flex-col space-y-[2px] mt-1">
               {libraryItems.map(renderNavItem)}
             </nav>
           </div>
 
-          <Divider />
+          {renderDivider('div-2')}
 
           {/* Section 3: Kategori (Explore) */}
           <div className="flex flex-col pb-1">
-            <SectionHeader title="Kategori" />
+            {renderSectionHeader('Kategori')}
             <nav className="flex flex-col space-y-[2px] mt-1">
               {contentItems.map(renderNavItem)}
             </nav>
           </div>
 
-          <Divider />
+          {renderDivider('div-3')}
 
           {/* Section 4: Lainnya (More) */}
           <div className="flex flex-col pb-1">
-            <SectionHeader title="Lainnya" />
+            {renderSectionHeader('Lainnya')}
             <nav className="flex flex-col space-y-[2px] mt-1">
               {systemItems.map(renderNavItem)}
             </nav>
           </div>
 
-          <Divider />
+          {renderDivider('div-4')}
 
           {/* Footer area — YouTube-style links & copyright */}
           <div className="px-5 pt-1 pb-6">
@@ -291,7 +291,7 @@ export const Sidebar: React.FC = () => {
           sidebarExpanded ? 'w-60' : 'w-[72px]'
         }`}
       >
-        <SidebarContent expanded={sidebarExpanded} />
+        {renderSidebarContent()}
       </aside>
     </>
   );
