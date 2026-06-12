@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../stores/useAppStore';
 import { UserAvatar } from '../components/ui/UserAvatar';
@@ -6,12 +6,13 @@ import {
   Mail, Bell, Edit3, Save, History, 
   Bookmark, LogOut, ChevronDown, User, Play, Info, Sliders 
 } from 'lucide-react';
+import { checkBirthdateStatus, updateMyProfile, uploadAvatar, uploadBanner } from '../lib/profileApi';
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { 
     userProfile, updateProfile, addToast, 
-    watchHistory, bookmarks, logout, fetchAndSetMissingCovers 
+    watchHistory, bookmarks, logout, fetchAndSetMissingCovers, fetchMyProfileData
   } = useAppStore();
 
   useEffect(() => {
@@ -20,29 +21,105 @@ export const ProfilePage: React.FC = () => {
 
   // Local Form state
   const [name, setName] = useState(userProfile.name);
+  const [username, setUsername] = useState(userProfile.username || '');
   const [email, setEmail] = useState(userProfile.email);
+  const [bio, setBio] = useState(userProfile.bio || '');
+  const [gender, setGender] = useState<'MALE' | 'FEMALE' | 'OTHER' | ''>(userProfile.gender || '');
+  const [birthdate, setBirthdate] = useState(userProfile.birthdate || '');
+  
   const [subLang, setSubLang] = useState(userProfile.subPreference);
   const [quality, setQuality] = useState(userProfile.qualityPreference);
   const [notify, setNotify] = useState(userProfile.notify);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isBirthdateSet, setIsBirthdateSet] = useState(false);
   const [activeSection, setActiveSection] = useState<'none' | 'account' | 'player' | 'app'>('none');
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync state with store profile updates
+  useEffect(() => {
+    setName(userProfile.name);
+    setUsername(userProfile.username || '');
+    setEmail(userProfile.email || '');
+    setBio(userProfile.bio || '');
+    setGender(userProfile.gender || '');
+    setBirthdate(userProfile.birthdate || '');
+    setSubLang(userProfile.subPreference);
+    setQuality(userProfile.qualityPreference);
+    setNotify(userProfile.notify);
+  }, [userProfile]);
+
+  useEffect(() => {
+    async function loadBirthdateStatus() {
+      try {
+        const res = await checkBirthdateStatus();
+        setIsBirthdateSet(res.is_set);
+      } catch (e) {
+        console.error('Failed to fetch birthdate status:', e);
+      }
+    }
+    loadBirthdateStatus();
+  }, []);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({
-      name,
-      email,
-      subPreference: subLang,
-      qualityPreference: quality,
-      notify
-    });
-    setIsEditing(false);
-    addToast('success', 'Profil dan preferensi berhasil diperbarui!');
+    try {
+      await updateMyProfile({
+        full_name: name,
+        username,
+        bio,
+        gender: gender || null,
+        birthdate: birthdate || undefined
+      });
+      await fetchMyProfileData();
+      setIsEditing(false);
+      addToast('success', 'Profil berhasil diperbarui!');
+    } catch (err: any) {
+      console.error(err);
+      addToast('error', err.message || 'Gagal menyimpan profil.');
+    }
   };
 
   const handleAvatarChange = () => {
-    addToast('info', 'Mengganti avatar dinonaktifkan dalam versi demo ini.');
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      addToast('info', 'Mengunggah avatar...');
+      await uploadAvatar(file);
+      await fetchMyProfileData();
+      addToast('success', 'Avatar berhasil diperbarui!');
+    } catch (err: any) {
+      console.error(err);
+      if (String(err.message).includes('VIP') || String(err).includes('403')) {
+        addToast('error', 'Gagal: Fitur ini khusus untuk anggota VIP!');
+      } else {
+        addToast('error', err.message || 'Gagal mengunggah avatar.');
+      }
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      addToast('info', 'Mengunggah banner...');
+      await uploadBanner(file);
+      await fetchMyProfileData();
+      addToast('success', 'Banner berhasil diperbarui!');
+    } catch (err: any) {
+      console.error(err);
+      if (String(err.message).includes('VIP') || String(err).includes('403')) {
+        addToast('error', 'Gagal: Fitur ini khusus untuk anggota VIP!');
+      } else {
+        addToast('error', err.message || 'Gagal mengunggah banner.');
+      }
+    }
   };
 
   const handleLogout = () => {
@@ -54,12 +131,42 @@ export const ProfilePage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-16 text-left">
       
+      {/* Banner Profil (YouTube Style) */}
+      <div className="relative h-40 sm:h-48 w-full rounded-2xl overflow-hidden border border-border/40 bg-bg-surface shadow-lg group">
+        {userProfile.bannerUrl ? (
+          <img
+            src={userProfile.bannerUrl}
+            alt="Banner Profile"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-primary/10 via-primary-light/5 to-bg-base flex items-center justify-center relative">
+            <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `linear-gradient(rgba(255,102,205,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,102,205,0.4) 1px, transparent 1px)`, backgroundSize: '32px 32px' }} />
+            <span className="text-xs font-semibold text-muted tracking-wider uppercase">NanimeID Premium Banner</span>
+          </div>
+        )}
+        <button
+          onClick={() => bannerInputRef.current?.click()}
+          className="absolute bottom-3 right-3 px-3 py-1.5 bg-black/75 hover:bg-black/90 text-white rounded-xl text-[10px] font-bold border border-white/10 hover:border-primary/50 transition-all flex items-center gap-1.5 active:scale-95 shadow-lg focus:outline-none"
+        >
+          <Edit3 className="w-3 h-3" />
+          <span>Ganti Banner</span>
+        </button>
+        <input
+          type="file"
+          ref={bannerInputRef}
+          onChange={handleBannerUpload}
+          accept="image/*"
+          className="hidden"
+        />
+      </div>
+
       {/* 1. Header Profil (YouTube Style) */}
       <div className="flex flex-col sm:flex-row items-center gap-5 bg-bg-surface border border-border/40 rounded-2xl p-6 sm:p-8">
         
         {/* Avatar */}
         <div className="relative group shrink-0">
-          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-primary/50 shadow-glow relative">
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-primary/50 shadow-glow relative bg-bg-base">
             <UserAvatar
               src={userProfile.avatarUrl}
               name={userProfile.name}
@@ -73,28 +180,44 @@ export const ProfilePage: React.FC = () => {
           >
             <Edit3 className="w-3 h-3" />
           </button>
+          <input
+            type="file"
+            ref={avatarInputRef}
+            onChange={handleAvatarUpload}
+            accept="image/*"
+            className="hidden"
+          />
         </div>
 
         {/* User metadata */}
         <div className="flex-1 text-center sm:text-left space-y-1.5">
-          <h2 className="text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight">
-            {userProfile.name}
-          </h2>
+          <div className="flex items-center justify-center sm:justify-start gap-2">
+            <h2 className="text-xl sm:text-2xl font-black font-heading text-text-primary tracking-tight">
+              {userProfile.name}
+            </h2>
+            {userProfile.isVip && (
+              <span className="px-2 py-0.5 rounded bg-primary text-black font-mono font-black text-[9px] uppercase tracking-wider">
+                VIP
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-text-secondary font-medium">
             <span className="flex items-center gap-1">
               <Mail className="w-3.5 h-3.5 text-muted" />
               <span>{userProfile.email}</span>
             </span>
             <span className="hidden sm:inline text-muted">•</span>
-            <span className="text-primary-light font-semibold">@andi_wibu</span>
+            <span className="text-primary-light font-semibold">@{userProfile.username || 'user'}</span>
           </div>
           <div className="pt-2 flex flex-wrap justify-center sm:justify-start gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider">
-              WIBU AKTIF
+              LEVEL {userProfile.level || 1}
             </span>
-            <span className="px-2.5 py-0.5 rounded-full bg-bg-base border border-border/60 text-[10px] font-bold text-muted uppercase font-mono tracking-wider">
-              VERSI WEB 1.0
-            </span>
+            {userProfile.bio && (
+              <p className="text-xs text-text-secondary italic w-full text-center sm:text-left mt-1">
+                "{userProfile.bio}"
+              </p>
+            )}
           </div>
         </div>
         
@@ -295,6 +418,7 @@ export const ProfilePage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Nama Lengkap */}
                   <div className="space-y-1.5 text-left">
                     <label className="text-xs text-text-secondary block font-semibold">Nama Lengkap</label>
                     <input
@@ -306,14 +430,72 @@ export const ProfilePage: React.FC = () => {
                     />
                   </div>
 
+                  {/* Username */}
                   <div className="space-y-1.5 text-left">
-                    <label className="text-xs text-text-secondary block font-semibold">Alamat Email</label>
+                    <label className="text-xs text-text-secondary block font-semibold">Username</label>
+                    <input
+                      type="text"
+                      value={username}
+                      disabled={!isEditing}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full h-9 px-3 bg-bg-base border border-border/60 disabled:opacity-75 rounded-lg text-xs text-text-primary focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs text-text-secondary block font-semibold">Alamat Email (Akun Google)</label>
                     <input
                       type="email"
                       value={email}
+                      disabled
+                      className="w-full h-9 px-3 bg-bg-base/50 border border-border/30 opacity-60 rounded-lg text-xs text-muted focus:outline-none cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* Gender */}
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs text-text-secondary block font-semibold">Jenis Kelamin</label>
+                    <select
+                      value={gender}
                       disabled={!isEditing}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e: any) => setGender(e.target.value)}
+                      className="w-full h-9 px-2 bg-bg-base border border-border/60 disabled:opacity-75 rounded-lg text-xs text-text-primary focus:outline-none focus:border-primary/50"
+                    >
+                      <option value="">Pilih...</option>
+                      <option value="MALE">Laki-laki (Male)</option>
+                      <option value="FEMALE">Perempuan (Female)</option>
+                      <option value="OTHER">Lainnya (Other)</option>
+                    </select>
+                  </div>
+
+                  {/* Tanggal Lahir */}
+                  <div className="space-y-1.5 text-left">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-text-secondary block font-semibold">Tanggal Lahir</label>
+                      {isBirthdateSet && (
+                        <span className="text-[9px] text-green-400 font-bold bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20">Terkunci</span>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={birthdate ? birthdate.substring(0, 10) : ''}
+                      disabled={!isEditing || isBirthdateSet}
+                      onChange={(e) => setBirthdate(e.target.value)}
                       className="w-full h-9 px-3 bg-bg-base border border-border/60 disabled:opacity-75 rounded-lg text-xs text-text-primary focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+
+                  {/* Bio */}
+                  <div className="sm:col-span-2 space-y-1.5 text-left">
+                    <label className="text-xs text-text-secondary block font-semibold">Bio / Slogan</label>
+                    <textarea
+                      value={bio}
+                      disabled={!isEditing}
+                      onChange={(e) => setBio(e.target.value)}
+                      rows={2}
+                      className="w-full p-3 bg-bg-base border border-border/60 disabled:opacity-75 rounded-lg text-xs text-text-primary focus:outline-none focus:border-primary/50 resize-none"
+                      placeholder="Tuliskan biografi singkat kamu..."
                     />
                   </div>
                 </div>

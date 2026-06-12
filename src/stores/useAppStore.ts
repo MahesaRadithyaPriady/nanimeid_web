@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Bookmark, WatchHistory, Anime, Manga } from '../types';
 import { fetchAnimeDetail } from '../lib/animeApi';
+import { fetchMyProfile } from '../lib/profileApi';
 
 export interface ToastMessage {
   id: string;
@@ -18,6 +19,17 @@ export interface UserProfile {
   animeCount: number;
   mangaCount: number;
   episodesWatchedCount: number;
+  // New API fields:
+  id?: number;
+  username?: string;
+  bio?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | null;
+  birthdate?: string | null;
+  bannerUrl?: string | null;
+  vipLevel?: string;
+  isVip?: boolean;
+  level?: number;
+  xp?: number;
 }
 
 interface AppState {
@@ -27,6 +39,7 @@ interface AppState {
   login: (profile?: Partial<UserProfile>) => void;
   logout: () => void;
   setAuthToken: (token: string | null) => void;
+  fetchMyProfileData: () => Promise<void>;
 
   // UI states
   sidebarExpanded: boolean;
@@ -101,6 +114,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     saveState('is_logged_in', true);
     set({ isLoggedIn: true });
     if (profile) get().updateProfile(profile);
+    // Fetch profile data from API server immediately
+    get().fetchMyProfileData();
   },
 
   logout: () => {
@@ -112,6 +127,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAuthToken: (token) => {
     saveState('auth_token', token);
     set({ authToken: token });
+  },
+
+  fetchMyProfileData: async () => {
+    const { authToken, isLoggedIn, logout } = get();
+    if (!authToken || !isLoggedIn) return;
+    try {
+      const res = await fetchMyProfile();
+      if (res && res.data) {
+        const apiUser = res.data;
+        const profile: Partial<UserProfile> = {
+          name: apiUser.profile?.full_name || apiUser.username,
+          email: apiUser.email || '',
+          avatarUrl: apiUser.profile?.avatar_url || '',
+          id: apiUser.id,
+          username: apiUser.username,
+          bio: apiUser.profile?.bio || '',
+          gender: apiUser.profile?.gender || null,
+          birthdate: apiUser.profile?.birthdate || null,
+          bannerUrl: apiUser.profile?.banner_url || '',
+          vipLevel: apiUser.vip?.vip_level || 'FREE',
+          isVip: apiUser.vip?.status === 'ACTIVE' || !!apiUser.vip,
+          level: apiUser.level?.level_number || 1,
+          xp: apiUser.stats?.xp || 0,
+        };
+        get().updateProfile(profile);
+      }
+    } catch (e) {
+      console.error('Failed to fetch profile from server:', e);
+      if (String(e).includes('401') || String(e).includes('Unauthorized') || String(e).includes('token')) {
+        logout();
+      }
+    }
   },
 
   // UI

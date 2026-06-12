@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize2, 
   Minimize2, Settings, ArrowLeft, ArrowRight, Heart, Send, 
-  MessageSquare, Star, Loader2 
+  MessageSquare, Star, Loader2, Smile 
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { useAppStore } from '../stores/useAppStore';
@@ -18,9 +18,12 @@ import {
   postComment,
   likeComment,
   unlikeComment,
+  fetchStickers,
+  fetchVipEligibility,
+  purchaseSticker,
   type ApiEpisodeNavigation
 } from '../lib/animeApi';
-import type { ApiAnime, ApiEpisode, ApiComment } from '../types';
+import type { ApiAnime, ApiEpisode, ApiComment, ApiSticker } from '../types';
 
 /** Format seconds into mm:ss or hh:mm:ss */
 function formatDuration(seconds?: number): string {
@@ -33,6 +36,156 @@ function formatDuration(seconds?: number): string {
   }
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
+
+/** Helper to resolve sticker image URLs dynamically by replacing placeholder domains with backend host */
+function getStickerUrl(content?: string): string {
+  if (!content) return '';
+
+  // If it's already a valid external HTTP/HTTPS URL, just use it directly
+  if (content.startsWith('http://') || content.startsWith('https://')) {
+    return content;
+  }
+
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
+  const apiHost = baseUrl.replace(/\/v?\d+\.\d+\.\d+(\/.*)?$/, '').replace(/\/v?\d+(\/.*)?$/, '');
+
+  // 1. If it's a code (like STK_HAPPY_1)
+  if (!content.includes('/') && !content.includes('.')) {
+    return `${apiHost}/static/uploads/stickers/${content.toLowerCase()}.png`;
+  }
+
+  // 2. If it's a relative path
+  if (content.startsWith('/') || content.startsWith('static/')) {
+    const cleanPath = content.startsWith('/') ? content : `/${content}`;
+    return `${apiHost}${cleanPath}`;
+  }
+
+  // 3. Fallback
+  return `${apiHost}/static/uploads/stickers/${content}`;
+}
+
+const WatchPageSkeleton: React.FC = () => {
+  return (
+    <div className="pb-16 space-y-6">
+      {/* Back to details link skeleton */}
+      <div className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary/50">
+        <ArrowLeft className="w-3.5 h-3.5 opacity-40" />
+        <div className="w-28 h-3.5 bg-white/5 rounded animate-pulse" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Left Area: Player, Title, comments */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Video Player Box Skeleton */}
+          <div className="relative aspect-[16/9] w-full bg-[#0d0d0d] rounded-2xl overflow-hidden border border-border/30 flex items-center justify-center group/player">
+            {/* Dark inner layer with shimmer */}
+            <div className="absolute inset-0 animate-shimmer opacity-40" />
+            <div className="z-10 flex flex-col items-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center animate-pulse border border-white/10">
+                <Play className="w-6 h-6 text-white/20 fill-white/10 animate-pulse" />
+              </div>
+              <div className="w-36 h-3 bg-white/10 rounded animate-pulse" />
+            </div>
+          </div>
+
+          {/* Episode Meta Info Box Skeleton */}
+          <div className="bg-bg-sidebar/65 backdrop-blur-sm border border-border/30 rounded-2xl p-5 sm:p-6 text-left space-y-4 shadow-lg">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/20 pb-4">
+              <div className="space-y-2.5 flex-1">
+                <div className="w-24 h-3.5 bg-primary/10 rounded border border-primary/10 animate-pulse" />
+                <div className="w-3/4 h-7 bg-white/10 rounded animate-pulse" />
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="w-16 h-5 bg-white/5 rounded animate-pulse" />
+                  <div className="w-36 h-4 bg-white/5 rounded animate-pulse" />
+                </div>
+              </div>
+
+              {/* Prev / Next buttons skeletons */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-24 h-10 bg-white/5 border border-border/40 rounded-xl animate-pulse" />
+                <div className="w-24 h-10 bg-white/10 rounded-xl animate-pulse" />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+              {/* Left stats */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="w-16 h-6 bg-white/5 rounded-md animate-pulse" />
+                <div className="w-24 h-4 bg-white/5 rounded animate-pulse" />
+                <div className="w-20 h-4 bg-white/5 rounded animate-pulse" />
+              </div>
+              {/* Right indicators */}
+              <div className="flex items-center gap-2">
+                <div className="w-28 h-6 bg-white/5 rounded-md animate-pulse" />
+                <div className="w-20 h-6 bg-white/5 rounded-md animate-pulse" />
+              </div>
+            </div>
+          </div>
+
+          {/* Comments Section Skeleton */}
+          <div className="bg-bg-surface border border-border/40 rounded-2xl p-6 text-left space-y-6">
+            <div className="flex items-center gap-2 border-b border-border/40 pb-3">
+              <div className="w-32 h-5 bg-white/10 rounded animate-pulse" />
+            </div>
+
+            {/* Comment input form skeleton */}
+            <div className="flex gap-3">
+              <div className="w-9 h-9 rounded-full bg-white/5 animate-pulse shrink-0" />
+              <div className="flex-1 h-10 bg-white/5 rounded-xl animate-pulse" />
+            </div>
+
+            {/* Comment List skeleton */}
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3 text-sm border-b border-border/30 p-3 rounded-xl last:border-none">
+                  <div className="w-8 h-8 rounded-full bg-white/5 animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-4 bg-white/10 rounded animate-pulse" />
+                        <div className="w-8 h-3.5 bg-white/5 rounded animate-pulse" />
+                      </div>
+                      <div className="w-12 h-3 bg-white/5 rounded animate-pulse" />
+                    </div>
+                    <div className="w-full h-3 bg-white/5 rounded animate-pulse" />
+                    <div className="w-5/6 h-3 bg-white/5 rounded animate-pulse" />
+                    <div className="w-10 h-3.5 bg-white/5 rounded animate-pulse mt-1" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Area (Sidebar): Episode List Skeleton */}
+        <div className="bg-bg-surface border border-border/40 rounded-2xl p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-hidden flex flex-col text-left space-y-3 animate-fade-in">
+          <div className="pb-3 border-b border-border/50 shrink-0">
+            <div className="w-36 h-4 bg-white/10 rounded animate-pulse" />
+            <div className="w-24 h-3 bg-white/5 rounded animate-pulse mt-1.5" />
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-hidden">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-start gap-2.5 p-2 rounded-xl border border-transparent">
+                {/* Thumbnail placeholder */}
+                <div className="relative w-20 aspect-[16/9] bg-white/5 rounded animate-pulse shrink-0" />
+                {/* Details placeholder */}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-3.5 bg-white/10 rounded animate-pulse" />
+                    <div className="w-8 h-3 bg-white/5 rounded animate-pulse" />
+                  </div>
+                  <div className="w-5/6 h-3.5 bg-white/5 rounded animate-pulse" />
+                  <div className="w-12 h-2.5 bg-white/5 rounded animate-pulse font-mono" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const WatchPage: React.FC = () => {
   const { id, episodeNumber } = useParams<{ id: string; episodeNumber: string }>();
@@ -77,6 +230,90 @@ export const WatchPage: React.FC = () => {
   // Interactive Comments State
   const [comments, setComments] = useState<ApiComment[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
+
+  // Sticker States
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [stickers, setStickers] = useState<ApiSticker[]>([]);
+  const [stickerTab, setStickerTab] = useState<'owned' | 'store'>('owned');
+  const [stickerLoading, setStickerLoading] = useState(false);
+  const [stickerError, setStickerError] = useState<string | null>(null);
+  const [isPurchasing, setIsPurchasing] = useState<number | null>(null);
+  const [isVipEligible, setIsVipEligible] = useState<boolean | null>(null);
+
+  // Load stickers & check eligibility when picker opens
+  useEffect(() => {
+    if (!showStickerPicker || !isLoggedIn) return;
+
+    const loadStickerData = async () => {
+      setStickerLoading(true);
+      setStickerError(null);
+      try {
+        if (isVipEligible === null) {
+          const eligibleRes = await fetchVipEligibility();
+          if (!eligibleRes.data?.eligible) {
+            setIsVipEligible(false);
+            setStickerError(eligibleRes.data?.reason || 'Fitur ini khusus VIP');
+            setStickerLoading(false);
+            return;
+          }
+          setIsVipEligible(true);
+        } else if (!isVipEligible) {
+          setStickerError('Fitur ini khusus VIP');
+          setStickerLoading(false);
+          return;
+        }
+
+        const stickersRes = await fetchStickers();
+        setStickers(stickersRes.data || []);
+      } catch (err: any) {
+        console.error('Error fetching sticker data:', err);
+        setStickerError(err.message || 'Gagal memuat stiker');
+      } finally {
+        setStickerLoading(false);
+      }
+    };
+
+    loadStickerData();
+  }, [showStickerPicker, isLoggedIn, isVipEligible]);
+
+  const handleSelectSticker = async (sticker: ApiSticker) => {
+    if (!currentEpisode?.id) return;
+    try {
+      const res = await postComment({
+        episode_id: currentEpisode.id,
+        content: sticker.image_url,
+        kind: 'STICKER',
+        video_second: currentTime
+      });
+      if (res && res.data) {
+        setComments((prev) => {
+          if (prev.some((c) => c.id === res.data.id)) return prev;
+          return [res.data, ...prev];
+        });
+      }
+      setShowStickerPicker(false);
+    } catch (err: any) {
+      console.error('Failed to post sticker comment:', err);
+      window.alert(err.message || 'Gagal mengirim stiker');
+    }
+  };
+
+  const handlePurchaseSticker = async (sticker: ApiSticker) => {
+    const itemId = (sticker as any).itemId || sticker.id;
+    setIsPurchasing(sticker.id);
+    try {
+      const res = await purchaseSticker(itemId);
+      window.alert(res.message || 'Stiker berhasil dibeli!');
+      // Reload stickers list to update ownership
+      const stickersRes = await fetchStickers();
+      setStickers(stickersRes.data || []);
+    } catch (err: any) {
+      console.error('Failed to purchase sticker:', err);
+      window.alert(err.message || 'Gagal membeli stiker');
+    } finally {
+      setIsPurchasing(null);
+    }
+  };
 
   const controlsTimeoutRef = useRef<any | null>(null);
   const qualityChangingTimeRef = useRef<number>(0);
@@ -630,12 +867,7 @@ export const WatchPage: React.FC = () => {
 
 
   if (isLoading) {
-    return (
-      <div className="py-32 flex flex-col items-center justify-center">
-        <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-        <p className="text-sm text-muted">Menyiapkan video player...</p>
-      </div>
-    );
+    return <WatchPageSkeleton />;
   }
 
   if (error || !anime) {
@@ -1049,8 +1281,20 @@ export const WatchPage: React.FC = () => {
                   placeholder="Tulis opini Anda tentang episode ini..."
                   value={newCommentText}
                   onChange={(e) => setNewCommentText(e.target.value)}
-                  className="w-full h-10 pl-4 pr-12 bg-bg-base border border-border/80 rounded-xl text-sm focus:outline-none focus:border-primary/50 text-text-primary placeholder:text-muted"
+                  className="w-full h-10 pl-4 pr-20 bg-bg-base border border-border/80 rounded-xl text-sm focus:outline-none focus:border-primary/50 text-text-primary placeholder:text-muted"
                 />
+                
+                {isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={() => setShowStickerPicker(prev => !prev)}
+                    className={`absolute right-9 p-1.5 transition-colors ${showStickerPicker ? 'text-primary' : 'text-text-secondary hover:text-primary'}`}
+                    aria-label="Pilih stiker"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+                )}
+
                 <button
                   type="submit"
                   className="absolute right-2 p-1.5 text-primary hover:text-primary-light transition-colors"
@@ -1058,6 +1302,112 @@ export const WatchPage: React.FC = () => {
                 >
                   <Send className="w-4 h-4" />
                 </button>
+
+                {/* Sticker Picker Popover */}
+                {showStickerPicker && (
+                  <div className="absolute bottom-12 right-0 w-80 bg-bg-sidebar/95 backdrop-blur-md border border-border/60 rounded-2xl p-4 shadow-2xl z-35 flex flex-col text-left animate-scale-up">
+                    {/* Header */}
+                    <div className="flex items-center justify-between pb-2 border-b border-border/20 mb-3">
+                      <h4 className="text-xs font-bold text-text-primary tracking-wide">Pilih Stiker</h4>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowStickerPicker(false)}
+                        className="text-muted hover:text-text-primary text-[10px] font-bold"
+                      >
+                        Tutup
+                      </button>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex gap-2 mb-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setStickerTab('owned')}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'owned' ? 'bg-primary text-black' : 'bg-white/5 text-text-secondary hover:text-text-primary'}`}
+                      >
+                        Milik Saya
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStickerTab('store')}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'store' ? 'bg-primary text-black' : 'bg-white/5 text-text-secondary hover:text-text-primary'}`}
+                      >
+                        Toko Stiker
+                      </button>
+                    </div>
+
+                    {/* Content */}
+                    {stickerLoading ? (
+                      <div className="py-8 flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                        <span className="text-[10px] text-muted">Memuat stiker...</span>
+                      </div>
+                    ) : stickerError ? (
+                      <div className="py-6 text-center text-xs text-red-400 font-medium">
+                        {stickerError.includes('VIP') ? (
+                          <div className="space-y-2">
+                            <div className="text-yellow-400 font-bold">Fitur Khusus VIP</div>
+                            <p className="text-muted text-[10px]">Tingkatkan tier Anda untuk menggunakan stiker di komentar.</p>
+                          </div>
+                        ) : (
+                          stickerError
+                        )}
+                      </div>
+                    ) : stickerTab === 'owned' ? (
+                      <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-pink">
+                        {stickers.filter(s => s.is_owned).length > 0 ? (
+                          stickers.filter(s => s.is_owned).map((sticker) => (
+                            <button
+                              key={sticker.id}
+                              type="button"
+                              onClick={() => handleSelectSticker(sticker)}
+                              className="aspect-square bg-white/5 hover:bg-white/10 border border-border/40 hover:border-primary/40 rounded-xl p-1.5 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                              title={sticker.name}
+                            >
+                              <img src={getStickerUrl(sticker.image_url)} alt={sticker.name} className="max-w-full max-h-full object-contain" />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="col-span-4 py-8 text-center text-[11px] text-muted">
+                            Anda belum memiliki stiker. Beli beberapa di Toko Stiker!
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // Store Tab
+                      <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-pink">
+                        {stickers.length > 0 ? (
+                          stickers.map((sticker) => (
+                            <div
+                              key={sticker.id}
+                              className="relative aspect-square bg-white/5 border border-border/30 rounded-xl p-1.5 flex flex-col items-center justify-center"
+                              title={`${sticker.name} - ${sticker.description || ''}`}
+                            >
+                              <img src={getStickerUrl(sticker.image_url)} alt={sticker.name} className="max-w-8 max-h-8 object-contain mb-1" />
+                              
+                              {sticker.is_owned ? (
+                                <span className="text-[7.5px] font-bold text-green-400 uppercase">Dimiliki</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={isPurchasing === sticker.id}
+                                  onClick={() => handlePurchaseSticker(sticker)}
+                                  className="text-[7.5px] font-extrabold bg-primary hover:bg-primary-light text-black px-1.5 py-0.5 rounded transition-all active:scale-90"
+                                >
+                                  {isPurchasing === sticker.id ? '...' : 'BELI'}
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="col-span-4 py-8 text-center text-[11px] text-muted">
+                            Tidak ada stiker tersedia di toko.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </form>
 
@@ -1130,7 +1480,30 @@ export const WatchPage: React.FC = () => {
                           </div>
                           <span className="text-[10px] text-muted">{timestampStr}</span>
                         </div>
-                        <p className="text-xs text-text-secondary leading-relaxed pr-2">{comment.content}</p>
+                        {comment.kind === 'STICKER' ? (
+                          (() => {
+                            const stickerSrc = comment.content || (comment as any).sticker_url || (comment as any).sticker?.image_url || '';
+                            return (
+                              <div className="mt-1 max-w-[120px] aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform duration-200">
+                                {stickerSrc ? (
+                                  <img 
+                                    src={getStickerUrl(stickerSrc)} 
+                                    alt="Sticker" 
+                                    className="max-w-full max-h-full object-contain"
+                                    onError={(e) => {
+                                      // Fallback image if sticker doesn't load
+                                      (e.target as HTMLImageElement).src = getStickerUrl('STK_HAPPY_1');
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-muted">Sticker kosong</span>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <p className="text-xs text-text-secondary leading-relaxed pr-2">{comment.content}</p>
+                        )}
                         
                         {/* Likes/Engagement */}
                         <div className="flex items-center gap-1.5 pt-1">

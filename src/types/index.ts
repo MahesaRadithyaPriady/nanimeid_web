@@ -260,3 +260,179 @@ export interface ApiComment {
   likedByMe?: boolean;
 }
 
+export interface ApiSticker {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  image_url: string;
+  is_active_catalog: boolean;
+  is_owned: boolean;
+  acquired_at: string | null;
+}
+
+export interface VipEligibilityResponse {
+  status: number;
+  message: string;
+  data: {
+    eligible: boolean;
+    reason: string | null;
+    feature: string;
+    required?: { min_tier?: string };
+    user?: { vip_active?: boolean; vip_level?: string };
+  };
+}
+
+export interface PurchaseStickerResponse {
+  message: string;
+  wallet?: {
+    user_id: number;
+    balance_coins: number;
+  };
+  item?: {
+    id: number;
+    sku: string;
+    item_type: 'STICKER';
+    sticker_id: number;
+    coin_price: number;
+  };
+  userSticker?: {
+    id: number;
+    user_id: number;
+    sticker_id: number;
+    acquired_at: string;
+  };
+}
+
+/* ─── Profile API Interfaces ─── */
+
+export interface ApiProfileDetail {
+  full_name: string | null;
+  bio: string | null;
+  gender: 'MALE' | 'FEMALE' | 'OTHER' | null;
+  birthdate: string | null;
+  avatar_url: string | null;
+  banner_url: string | null;
+}
+
+export interface ApiUserProfile {
+  id: number;
+  username: string;
+  email?: string;
+  is_online: boolean;
+  last_seen_at: string | null;
+  profile?: ApiProfileDetail;
+  stats?: {
+    minutes_watched: number;
+    likes: number;
+    comments_count: number;
+    xp: number;
+    level: number;
+  };
+  vip?: {
+    status: string;
+    vip_level: string;
+    endAt: string | null;
+  };
+  level?: {
+    id: number;
+    level_number: number;
+    title: string;
+    xp_required_total: number;
+  };
+  avatar_border_active?: {
+    id: number;
+    border_id: number;
+    code: string;
+    title: string;
+    image_url: string;
+    is_active: boolean;
+  } | null;
+  super_badge_active?: {
+    id: number;
+    badge_id: number;
+    badge_name: string;
+    badge_icon: string;
+    title_color?: string;
+  } | null;
+}
+
+export interface ApiUserSearchItem {
+  id: number;
+  username: string;
+  profile?: {
+    full_name: string | null;
+    avatar_url: string | null;
+    bio: string | null;
+  };
+  vip?: {
+    status: string;
+    vip_level: string;
+  };
+  level?: {
+    level_number: number;
+  };
+}
+
+export interface ApiProfileCommentItem {
+  id: number;
+  content: string;
+  kind: 'TEXT' | 'STICKER';
+  createdAt: string;
+  episode_id?: number | null;
+  anime_id?: number | null;
+  anime?: {
+    id: number;
+    nama_anime: string;
+  };
+  episode?: {
+    id: number;
+    nomor_episode: number;
+  };
+}
+
+export interface ApiProfileWatchedItem {
+  id: number;
+  episode_id: number;
+  user_id: number;
+  progress_watching: number;
+  is_completed: boolean;
+  updatedAt: string;
+  episode: {
+    id: number;
+    nomor_episode: number;
+    judul_episode: string;
+    anime: {
+      id: number;
+      nama_anime: string;
+      gambar_anime: string;
+    };
+  };
+}
+
+export interface ApiProfileCompletedItem {
+  count: number;
+  episodes: Array<{
+    id: number;
+    episode_id: number;
+    updatedAt: string;
+    episode: {
+      id: number;
+      nomor_episode: number;
+      judul_episode: string;
+      anime: {
+        id: number;
+        nama_anime: string;
+      };
+    };
+  }>;
+}
+
+export interface ApiProfileStreak {
+  current_streak: number;
+  longest_streak: number;
+  last_sign_in: string | null;
+}
+
+
+

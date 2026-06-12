@@ -11,6 +11,9 @@ import type {
   ApiScheduleDay,
   ApiGenreStats,
   ApiComment,
+  ApiSticker,
+  VipEligibilityResponse,
+  PurchaseStickerResponse,
 } from '../types';
 
 const BASE_URL =
@@ -592,3 +595,21 @@ export async function likeComment(commentId: number | string): Promise<any> {
 export async function unlikeComment(commentId: number | string): Promise<any> {
   return sendRequest<any>('DELETE', `/comments/${commentId}/like`);
 }
+
+/** GET /store/stickers - List all stickers & ownership */
+export async function fetchStickers(opts?: { userId?: number | string }): Promise<{ status: number; message: string; data: ApiSticker[] }> {
+  return get<{ status: number; message: string; data: ApiSticker[] }>('/store/stickers', {
+    userId: opts?.userId
+  });
+}
+
+/** GET /store/vip/eligibility - VIP eligibility check */
+export async function fetchVipEligibility(): Promise<VipEligibilityResponse> {
+  return get<VipEligibilityResponse>('/store/vip/eligibility');
+}
+
+/** POST /store/purchase/sticker - Buy a sticker */
+export async function purchaseSticker(itemId: number): Promise<PurchaseStickerResponse> {
+  return sendRequest<PurchaseStickerResponse>('POST', '/store/purchase/sticker', { itemId });
+}
+

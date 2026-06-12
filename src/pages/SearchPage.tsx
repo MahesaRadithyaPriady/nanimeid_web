@@ -7,7 +7,9 @@ import { MangaCard } from '../components/cards/MangaCard';
 import { Badge } from '../components/ui/Badge';
 import { useAppStore } from '../stores/useAppStore';
 import { fetchSearchPaginated } from '../lib/animeApi';
-import type { ApiAnime, Anime } from '../types';
+import { searchUsers } from '../lib/profileApi';
+import { UserAvatar } from '../components/ui/UserAvatar';
+import type { ApiAnime, Anime, ApiUserSearchItem } from '../types';
 
 export const SearchPage: React.FC = () => {
   const navigate = useNavigate();
@@ -15,9 +17,10 @@ export const SearchPage: React.FC = () => {
   const query = searchParams.get('q') || '';
   const { addBookmark, removeBookmark, isBookmarked, addToast, isLoggedIn } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<'semua' | 'anime' | 'manga'>('semua');
+  const [activeTab, setActiveTab] = useState<'semua' | 'anime' | 'manga' | 'pengguna'>('semua');
   const [animeResults, setAnimeResults] = useState<ApiAnime[]>([]);
   const [mangaResults, setMangaResults] = useState<any[]>([]);
+  const [userResults, setUserResults] = useState<ApiUserSearchItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +29,7 @@ export const SearchPage: React.FC = () => {
     if (!query.trim()) {
       setAnimeResults([]);
       setMangaResults([]);
+      setUserResults([]);
       return;
     }
 
@@ -38,16 +42,26 @@ export const SearchPage: React.FC = () => {
     ).map(m => ({ ...m, isAnime: false as const }));
     setMangaResults(localManga);
 
-    // 2. Fetch API Anime Search
+    // 2. Fetch API Anime & User Search
     const performSearch = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetchSearchPaginated(query, { page: 1, limit: 30 });
-        setAnimeResults(response.items || []);
+        const [animeRes, userRes] = await Promise.all([
+          fetchSearchPaginated(query, { page: 1, limit: 30 }).catch(() => ({ items: [] })),
+          searchUsers({ q: query }).catch(() => ({ data: [] }))
+        ]);
+        
+        setAnimeResults(animeRes.items || []);
+        
+        const rawUserData = (userRes as any).data;
+        const normalizedUsers = Array.isArray(rawUserData) 
+          ? rawUserData 
+          : (rawUserData ? [rawUserData] : []);
+        setUserResults(normalizedUsers);
       } catch (err: any) {
         console.error(err);
-        setError(err.message || 'Gagal mencari anime');
+        setError(err.message || 'Gagal mencari data');
       } finally {
         setIsLoading(false);
       }
@@ -181,7 +195,127 @@ export const SearchPage: React.FC = () => {
     }
   };
 
-  const totalResultsCount = animeResults.length + mangaResults.length;
+  const totalResultsCount = animeResults.length + mangaResults.length + userResults.length;
+
+  // Filter based on Tab
+  const filteredResults = (() => {
+    if (activeTab === 'semua') return [...formattedAnime, ...mangaResults, ...userResults];
+    if (activeTab === 'anime') return formattedAnime;
+    if (activeTab === 'manga') return mangaResults;
+    if (activeTab === 'pengguna') return userResults;
+    return [...formattedAnime, ...mangaResults, ...userResults];
+  })();
+
+  const getFeaturedItem = () => {
+    const topAnime = animeResults[0];
+    const topManga = mangaResults[0];
+    
+    if (!topAnime && !topManga) return null;
+    if (topAnime && !topManga) {
+      return {
+        id: String(topAnime.id),
+        title: topAnime.nama_anime,
+        coverUrl: topAnime.gambar_anime,
+        posterUrl: topAnime.gambar_anime,
+        rating: topAnime.rating_anime ?? 0,
+        type: 'anime',
+        releaseDate: topAnime.tanggal_rilis_anime,
+        description: topAnime.sinopsis_anime,
+        slug: String(topAnime.id),
+        isAnime: true as const,
+        rawItem: topAnime
+      };
+    }
+    if (!topAnime && topManga) {
+      return {
+        id: topManga.id,
+        title: topManga.title,
+        coverUrl: topManga.coverUrl,
+        posterUrl: topManga.coverUrl,
+        rating: topManga.rating ?? 0,
+        type: topManga.type,
+        releaseDate: topManga.releaseDate,
+        description: topManga.description,
+        slug: topManga.slug,
+        isAnime: false as const,
+        rawItem: topManga
+      };
+    }
+    
+    // Both exist, compare rating
+    const animeRating = topAnime.rating_anime ?? 0;
+    const mangaRating = topManga.rating ?? 0;
+    if (animeRating >= mangaRating) {
+      return {
+        id: String(topAnime.id),
+        title: topAnime.nama_anime,
+        coverUrl: topAnime.gambar_anime,
+        posterUrl: topAnime.gambar_anime,
+        rating: animeRating,
+        type: 'anime',
+        releaseDate: topAnime.tanggal_rilis_anime,
+        description: topAnime.sinopsis_anime,
+        slug: String(topAnime.id),
+        isAnime: true as const,
+        rawItem: topAnime
+      };
+    } else {
+      return {
+        id: topManga.id,
+        title: topManga.title,
+        coverUrl: topManga.coverUrl,
+        posterUrl: topManga.coverUrl,
+        rating: mangaRating,
+        type: topManga.type,
+        releaseDate: topManga.releaseDate,
+        description: topManga.description,
+        slug: topManga.slug,
+        isAnime: false as const,
+        rawItem: topManga
+      };
+    }
+  };
+
+  const featuredItem = getFeaturedItem();
+  const featuredBookmarked = featuredItem 
+    ? isBookmarked(featuredItem.id, featuredItem.isAnime ? 'anime' : 'manga') 
+    : false;
+
+  const handleFeaturedBookmarkToggle = () => {
+    if (!featuredItem) return;
+    const type = featuredItem.isAnime ? 'anime' : 'manga';
+    if (!isLoggedIn) {
+      addToast('info', 'Login dulu untuk menyimpan konten!');
+      return;
+    }
+    if (featuredBookmarked) {
+      removeBookmark(featuredItem.id, type);
+      addToast('info', `Dihapus dari simpanan: ${featuredItem.title}`);
+    } else {
+      if (featuredItem.isAnime) {
+        const a = featuredItem.rawItem as ApiAnime;
+        const mappedAnime: Anime = {
+          id: String(a.id),
+          title: a.nama_anime,
+          slug: String(a.id),
+          description: a.sinopsis_anime ?? '',
+          type: 'anime',
+          status: (a.status_anime ?? '').toLowerCase().includes('ongoing') ? 'ongoing' : 'completed',
+          releaseDate: a.tanggal_rilis_anime ?? '',
+          studio: (a.studio_anime ?? []).join(', '),
+          rating: a.rating_anime ?? 0,
+          episodeCount: a.episodes_count ?? 0,
+          genres: a.genre_anime ?? [],
+          coverUrl: a.gambar_anime,
+          posterUrl: a.gambar_anime,
+        };
+        addBookmark(mappedAnime);
+      } else {
+        addBookmark(featuredItem.rawItem);
+      }
+      addToast('success', `Disimpan ke daftar: ${featuredItem.title}`);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-16 text-left">
@@ -207,7 +341,7 @@ export const SearchPage: React.FC = () => {
         <div className="py-12 text-center text-red-500 text-sm">
           {error}
         </div>
-      ) : allResults.length > 0 ? (
+      ) : totalResultsCount > 0 ? (
         <div className="space-y-8">
           
           {/* Category Tabs filter */}
@@ -215,7 +349,8 @@ export const SearchPage: React.FC = () => {
             {[
               { id: 'semua', lbl: 'Semua Kategori' },
               { id: 'anime', lbl: 'Anime Only' },
-              { id: 'manga', lbl: 'Manga / Manhwa' }
+              { id: 'manga', lbl: 'Manga / Manhwa' },
+              { id: 'pengguna', lbl: 'Pengguna' }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -311,10 +446,36 @@ export const SearchPage: React.FC = () => {
             <h3 className="text-xs font-bold text-muted uppercase tracking-wider block">Semua Hasil Pencarian</h3>
             {filteredResults.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {filteredResults.map((r) => (
+                {filteredResults.map((r: any) => (
                   <div key={r.id} className="animate-fade-in">
                     {r.isAnime ? (
                       <AnimeCard apiAnime={r as ApiAnime} />
+                    ) : 'username' in r ? (
+                      <Link 
+                        to={`/user/${r.id}`} 
+                        className="bg-bg-surface border border-border/40 hover:border-primary/30 p-4 rounded-2xl flex flex-col items-center text-center transition-all hover:scale-[1.02] shadow-md group h-full justify-between"
+                      >
+                        <div className="w-16 h-16 rounded-full overflow-hidden border border-primary/20 group-hover:border-primary/50 relative bg-bg-base flex items-center justify-center mb-3 shrink-0">
+                          <UserAvatar
+                            src={r.profile?.avatar_url || ''}
+                            name={r.profile?.full_name || r.username}
+                            className="w-full h-full rounded-full text-xl"
+                          />
+                        </div>
+                        <div className="min-w-0 w-full space-y-0.5">
+                          <h4 className="text-xs font-bold text-text-primary truncate">
+                            {r.profile?.full_name || r.username}
+                          </h4>
+                          <p className="text-[10px] text-muted truncate">
+                            @{r.username}
+                          </p>
+                        </div>
+                        {r.vip && (
+                          <span className="mt-2 px-1.5 py-0.5 rounded bg-primary text-black font-mono font-black text-[8px] uppercase">
+                            VIP
+                          </span>
+                        )}
+                      </Link>
                     ) : (
                       <MangaCard manga={r} />
                     )}

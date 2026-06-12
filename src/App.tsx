@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { PageLayout } from './components/layout/PageLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -10,11 +11,21 @@ import { SearchPage } from './pages/SearchPage';
 import { BookmarksPage } from './pages/BookmarksPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { UserProfilePage } from './pages/UserProfilePage';
 import { AnimeDetailPage } from './pages/AnimeDetailPage';
 import { WatchPage } from './pages/WatchPage';
 import { MangaReaderPage } from './pages/MangaReaderPage';
+import { useAppStore } from './stores/useAppStore';
 
 function App() {
+  const { fetchMyProfileData, isLoggedIn } = useAppStore();
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchMyProfileData();
+    }
+  }, [isLoggedIn, fetchMyProfileData]);
+
   return (
     <Router>
       <Routes>
@@ -33,6 +44,7 @@ function App() {
           <Route path="watch/:id/ep/:episodeNumber" element={<WatchPage />} />
           <Route path="manga/:slug" element={<MangaReaderPage />} />
           <Route path="read/:slug/ch/:chapterNumber" element={<MangaReaderPage />} />
+          <Route path="user/:userId" element={<UserProfilePage />} />
 
           {/* ── Protected routes — require login ── */}
           <Route element={<ProtectedRoute />}>
