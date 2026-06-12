@@ -1,73 +1,71 @@
-# React + TypeScript + Vite
+<p align="center">
+  <img src="./public/logo.png" alt="NanimeID Logo" width="200" style="border-radius: 20px; box-shadow: 0 8px 32px rgba(255,102,205,0.25);" />
+</p>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<h1 align="center">✨ NanimeID Web ✨</h1>
 
-Currently, two official plugins are available:
+<p align="center">
+  <strong>Platform Nonton Anime & Baca Manga Tanpa Iklan yang Cepat, Ringan, dan Modern</strong>
+</p>
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+<p align="center">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vite-64748B?style=for-the-badge&logo=vite&logoColor=FFD627" alt="Vite" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+</p>
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Tentang NanimeID Web
 
-## Expanding the ESLint configuration
+**NanimeID Web** adalah versi desktop-first dan browser-friendly dari aplikasi Android populer NanimeID. Dibangun untuk memberikan pengalaman menonton anime dan membaca manga/manhwa secara seamless **tanpa gangguan iklan**.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Mengusung tema **Dark Mode** elegan dengan aksen **Pink Magenta** yang dinamis, UI/UX aplikasi ini dirancang sefamiliar mungkin dengan platform video global terkemuka untuk kenyamanan navigasi maksimal.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🎨 Design System & Estetika
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Kami menerapkan palet warna yang harmonis dan terkurasi dengan efek glow modern:
+
+- **Primary Accent:** `#ff66cd` (Pink Magenta) — digunakan untuk elemen interaktif & CTA.
+- **Background Base:** `#0d0d0d` (Dark Onyx) — memberikan kenyamanan ekstra untuk mata saat menonton di ruangan gelap.
+- **Surface & Cards:** `#161616` — kontras premium untuk layout kartu konten.
+- **Typography:** *Plus Jakarta Sans* (Heading) & *Inter* (Body) untuk keterbacaan tingkat tinggi.
+
+---
+
+## ⚡ Fitur Utama
+
+- **📺 Advanced Video Player:** Player video 16:9 modern dengan kontrol gesture/keyboard shortcuts lengkap, pemilihan kualitas resolusi, dan kecepatan putar.
+- **📚 Immersive Manga Reader:** Mode baca long-strip/vertikal untuk manhwa dan navigasi horizontal untuk manga.
+- **🔍 Smart Browse & Filter:** Pencarian anime & manga instan dengan visual autocomplete dan filter komprehensif berdasarkan genre, season, status, dan tipe.
+- **🔖 Bookmark & History:** Lanjutkan tontonan atau bacaan terakhir secara otomatis dengan integrasi local store.
+- **👤 User Profile & Preferences:** Pengaturan kustomisasi preferensi subtitle, kualitas default, dan personalisasi profil.
+
+---
+
+## 🛠️ Cara Memulai (Development)
+
+### 1. Kloning Repositori
+```bash
+git clone https://github.com/fathanjamilrises/nanime-id.git
+cd nanime-id
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 2. Instal Dependensi
+```bash
+npm install
 ```
+
+### 3. Jalankan Server Dev
+```bash
+npm run dev
+```
+
+---
+
+<p align="center">
+  Dibuat dengan ❤️ oleh <strong>Frontend Team — Fathan Jamil</strong>
+</p>
