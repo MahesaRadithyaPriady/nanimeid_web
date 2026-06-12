@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   MessageSquare, History, CheckCircle, Flame, Clock, 
-  Heart, Calendar, User, ExternalLink, Shield, Lock, AlertCircle, Loader2
+  Heart, ExternalLink, Lock, AlertCircle, Loader2
 } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
 import { UserAvatar } from '../components/ui/UserAvatar';
