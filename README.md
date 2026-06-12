@@ -46,26 +46,3 @@ Kami menerapkan palet warna yang harmonis dan terkurasi dengan efek glow modern:
 
 ---
 
-## 🛠️ Cara Memulai (Development)
-
-### 1. Kloning Repositori
-```bash
-git clone https://github.com/fathanjamilrises/nanime-id.git
-cd nanime-id
-```
-
-### 2. Instal Dependensi
-```bash
-npm install
-```
-
-### 3. Jalankan Server Dev
-```bash
-npm run dev
-```
-
----
-
-<p align="center">
-  Dibuat dengan ❤️ oleh <strong>Frontend Team — Fathan Jamil</strong>
-</p>
