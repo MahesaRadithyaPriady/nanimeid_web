@@ -109,18 +109,29 @@ export const AnimeDetailPage: React.FC = () => {
   const statusNorm = (anime.status_anime ?? '').toLowerCase();
   const statusVariant = statusNorm.includes('ongoing') ? 'ongoing' : statusNorm.includes('upcoming') ? 'upcoming' : 'completed';
 
+  const handleBack = () => {
+    const state = location.state as { from?: string; fromDetail?: boolean } | null;
+    const fallbackPath = state?.from;
+
+    if (fallbackPath) {
+      navigate(fallbackPath);
+      return;
+    }
+
+    if (state?.fromDetail || (window.history.state?.idx ?? 0) > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
+
   return (
     <div className="pb-16 space-y-8">
       {/* Back Button */}
       <div className="flex justify-start">
         <button 
-          onClick={() => {
-            if (window.history.length > 1 && location.key !== 'default') {
-              navigate(-1);
-            } else {
-              navigate('/');
-            }
-          }} 
+          onClick={handleBack}
           className="group inline-flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-text-secondary hover:text-primary bg-bg-surface/30 hover:bg-bg-surface/80 backdrop-blur-md border border-border/40 hover:border-primary/30 rounded-xl transition-all duration-300 active:scale-95 shadow-sm hover:shadow-[0_0_20px_rgba(255,102,205,0.12)] focus:outline-none"
         >
           <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />

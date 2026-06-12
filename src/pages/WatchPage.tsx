@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize2, 
   Minimize2, Settings, ArrowLeft, ArrowRight, Heart, Send, 
-  MessageSquare, Star, Loader2, Smile 
+  MessageSquare, Star, Loader2, Smile, VideoOff, Lock 
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { useAppStore } from '../stores/useAppStore';
@@ -190,13 +190,11 @@ const WatchPageSkeleton: React.FC = () => {
 export const WatchPage: React.FC = () => {
   const { id, episodeNumber } = useParams<{ id: string; episodeNumber: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const currentEpNum = parseInt(episodeNumber || '1', 10);
 
   const { 
     videoVolume, setVideoVolume, 
     videoQuality, setVideoQuality, 
-    subtitleLang, setSubtitleLang,
     addWatchHistory, watchHistory, 
     isLoggedIn, userProfile
   } = useAppStore();
@@ -216,6 +214,10 @@ export const WatchPage: React.FC = () => {
   // Video Ref & State
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const pendingSeekTimeRef = useRef<number | null>(null);
+  const pendingSeekRatioRef = useRef<number>(0);
+  const pendingShouldPlayRef = useRef<boolean>(false);
+  const lastSavedProgressBucketRef = useRef<number>(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -224,8 +226,12 @@ export const WatchPage: React.FC = () => {
   const [openSettings, setOpenSettings] = useState<'none' | 'quality' | 'speed'>('none');
   const [playbackRate, setPlaybackRate] = useState(1);
   const [muted, setMuted] = useState(false);
+  const [activeSourceIndex, setActiveSourceIndex] = useState(0);
   const [isChangingQuality, setIsChangingQuality] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  const bufferWatchdogRef = useRef<number | null>(null);
   
   // Interactive Comments State
   const [comments, setComments] = useState<ApiComment[]>([]);
@@ -279,10 +285,12 @@ export const WatchPage: React.FC = () => {
   const handleSelectSticker = async (sticker: ApiSticker) => {
     if (!currentEpisode?.id) return;
     try {
+      const stickerId = (sticker as any).itemId || (sticker as any).sticker_id || (sticker as any).item_id || sticker.id;
       const res = await postComment({
         episode_id: currentEpisode.id,
         content: sticker.image_url,
         kind: 'STICKER',
+        sticker_id: stickerId,
         video_second: currentTime
       });
       if (res && res.data) {
@@ -299,10 +307,15 @@ export const WatchPage: React.FC = () => {
   };
 
   const handlePurchaseSticker = async (sticker: ApiSticker) => {
-    const itemId = (sticker as any).itemId || sticker.id;
-    setIsPurchasing(sticker.id);
+    const itemId = (sticker as any).itemId || (sticker as any).sticker_id || (sticker as any).item_id || sticker.id;
+    console.log('[DEBUG] Sticker Object:', sticker);
+    console.log('[DEBUG] Computed itemId:', itemId);
+    if (!itemId && itemId !== 0) {
+      window.alert('ERROR FRONTEND: ID Stiker kosong! Lihat Console log (F12) untuk detail struktur stiker.');
+    }
+    setIsPurchasing(itemId);
     try {
-      const res = await purchaseSticker(itemId);
+      const res = await purchaseSticker(itemId, sticker.code);
       window.alert(res.message || 'Stiker berhasil dibeli!');
       // Reload stickers list to update ownership
       const stickersRes = await fetchStickers();
@@ -316,9 +329,6 @@ export const WatchPage: React.FC = () => {
   };
 
   const controlsTimeoutRef = useRef<any | null>(null);
-  const qualityChangingTimeRef = useRef<number>(0);
-  const qualityChangingPlayingRef = useRef<boolean>(false);
-
   // 1. Load Full Anime details on ID change (for sidebar episodes list & base metadata)
   useEffect(() => {
     if (!id) return;
@@ -421,153 +431,221 @@ export const WatchPage: React.FC = () => {
     };
   }, [currentEpisode?.id]);
 
-  // Get active video url based on selected quality and HLS status
-  const getVideoSource = () => {
-    if (!currentEpisode) return '';
+  const isLoginRestricted = !isLoggedIn;
+  const isUserVip = isLoggedIn && !!userProfile?.isVip;
+  const isVipRestricted = !isLoginRestricted && !!currentEpisode?.early_access && !isUserVip;
+  const hasRealSources = !!currentEpisode?.hls_master_url || 
+    (currentEpisode?.qualities && currentEpisode.qualities.length > 0 && 
+      currentEpisode.qualities.some(q => !!q.source_quality || !!q.hls_url));
+  const isSourceNotFound = currentEpisode && !isLoginRestricted && !isVipRestricted && !hasRealSources;
 
-    // If episode is VIP restricted early access, load fallback stream
-    if (currentEpisode.early_access) {
-      return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-    }
+  const getVideoSourceCandidates = () => {
+    if (!currentEpisode) return [];
+    if (isLoginRestricted) return [];
+    if (isVipRestricted) return [];
+    if (!hasRealSources) return [];
 
-    // A. Check if Master HLS Playlist exists for auto-adaptive quality
-    if (currentEpisode.hls_master_url) {
-      return currentEpisode.hls_master_url;
-    }
+    const candidates: string[] = [];
+    const isAutoQuality = String(videoQuality) === 'auto';
+    const pushUnique = (value?: string | null) => {
+      if (!value) return;
+      if (!candidates.includes(value)) candidates.push(value);
+    };
 
-    // B. Find matching quality selection
-    const q = currentEpisode.qualities?.find(item => item.nama_quality === videoQuality);
-    if (q) {
-      if (q.hls_status === 'DONE' && q.hls_url) {
-        return q.hls_url;
+    const selectedQuality = currentEpisode.qualities?.find((item) => item.nama_quality === videoQuality);
+    const firstQuality = currentEpisode.qualities?.[0];
+
+    // Manual quality selection prioritizes the direct source first so startup is faster.
+    if (!isAutoQuality) {
+      if (selectedQuality) {
+        pushUnique(selectedQuality.source_quality);
+        pushUnique(selectedQuality.hls_url);
+      } else if (firstQuality) {
+        pushUnique(firstQuality.source_quality);
+        pushUnique(firstQuality.hls_status === 'DONE' ? firstQuality.hls_url : null);
       }
-      return q.source_quality;
     }
 
-    // C. Fallback to any quality available
-    if (currentEpisode.qualities && currentEpisode.qualities.length > 0) {
-      const firstQ = currentEpisode.qualities[0];
-      if (firstQ.hls_status === 'DONE' && firstQ.hls_url) {
-        return firstQ.hls_url;
+    // Auto mode prefers the master playlist first.
+    if (isAutoQuality) {
+      pushUnique(currentEpisode.hls_master_url);
+      if (selectedQuality) {
+        pushUnique(selectedQuality.hls_status === 'DONE' ? selectedQuality.hls_url : null);
+        pushUnique(selectedQuality.source_quality);
       }
-      return firstQ.source_quality;
+    } else {
+      // Keep the master playlist as a fallback for manual mode.
+      pushUnique(currentEpisode.hls_master_url);
     }
 
-    // D. Final hard fallback to public stream
-    return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    // Then walk remaining qualities as fallbacks.
+    currentEpisode.qualities?.forEach((quality) => {
+      pushUnique(quality.hls_status === 'DONE' ? quality.hls_url : null);
+      pushUnique(quality.source_quality);
+    });
+
+    return candidates;
   };
 
-  const videoSource = getVideoSource();
-  const isHls = videoSource.includes('.m3u8');
+  const videoSources = getVideoSourceCandidates();
+  const videoSource = videoSources[activeSourceIndex] ?? videoSources[0] ?? '';
+  const isHls = /\.m3u8(\?|#|$)/i.test(videoSource);
 
-  // 3. Connect Video Element with HLS.js or native playback
+  const advanceToFallbackSource = (reason: string) => {
+    setIsChangingQuality(false);
+    setIsBuffering(true);
+    setStreamError(null);
+
+    const nextIndex = Math.min(activeSourceIndex + 1, Math.max(videoSources.length - 1, 0));
+    if (nextIndex > activeSourceIndex) {
+      if (videoRef.current) {
+        pendingSeekTimeRef.current = videoRef.current.currentTime || pendingSeekTimeRef.current;
+        pendingShouldPlayRef.current = !videoRef.current.paused;
+      }
+      setActiveSourceIndex(nextIndex);
+      return;
+    }
+
+    setIsBuffering(false);
+    setStreamError(reason || 'Stream tidak bisa dimuat. Coba lagi beberapa saat.');
+  };
+
+  useEffect(() => {
+    if (!isBuffering) {
+      if (bufferWatchdogRef.current) {
+        window.clearTimeout(bufferWatchdogRef.current);
+        bufferWatchdogRef.current = null;
+      }
+      return;
+    }
+
+    if (bufferWatchdogRef.current) {
+      window.clearTimeout(bufferWatchdogRef.current);
+    }
+
+    bufferWatchdogRef.current = window.setTimeout(() => {
+      if (bufferWatchdogRef.current) {
+        bufferWatchdogRef.current = null;
+      }
+      advanceToFallbackSource('Loading terlalu lama, mencoba sumber lain...');
+    }, 12000);
+
+    return () => {
+      if (bufferWatchdogRef.current) {
+        window.clearTimeout(bufferWatchdogRef.current);
+        bufferWatchdogRef.current = null;
+      }
+    };
+  }, [isBuffering, videoSource, activeSourceIndex]);
+
+  // 3. Connect Video Element with native / HLS.js playback
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !videoSource) return;
 
-    let hls: Hls | null = null;
+    let destroyed = false;
+    let hlsInstance: Hls | null = null;
 
-    // Cache parameters from refs and reset them
-    const targetTime = qualityChangingTimeRef.current;
-    const shouldPlay = qualityChangingPlayingRef.current;
-    qualityChangingTimeRef.current = 0;
-    qualityChangingPlayingRef.current = false;
-
-    const restorePlayback = () => {
+    const resetVideoElement = () => {
       setIsChangingQuality(false);
-      setIsBuffering(false);
-      if (targetTime > 0) {
-        video.currentTime = targetTime;
+      setIsBuffering(true);
+      video.pause();
+      if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
       }
-      if (shouldPlay) {
-        video.play().then(() => {
-          setIsPlaying(true);
-        }).catch(() => {
-          setIsPlaying(false);
-        });
-      } else {
-        if (isPlaying) {
-          video.play().catch(() => setIsPlaying(false));
-        }
-      }
+      video.removeAttribute('src');
+      video.removeAttribute('poster');
+      video.load();
+      video.preload = 'metadata';
     };
 
+    const handleVideoError = () => {
+      if (destroyed) return;
+      advanceToFallbackSource('Video gagal dimuat.');
+    };
+
+    resetVideoElement();
+
     if (isHls) {
-      if (Hls.isSupported()) {
-        hls = new Hls({
-          maxMaxBufferLength: 30, // Optimize buffering
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        video.src = videoSource;
+        video.load();
+        video.addEventListener('error', handleVideoError);
+      } else if (Hls.isSupported()) {
+        // Use Hls.js
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
         });
+        hlsInstance = hls;
         hls.loadSource(videoSource);
         hls.attachMedia(video);
-        
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          restorePlayback();
-        });
-
-        hls.on(Hls.Events.ERROR, (_, data) => {
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (destroyed) return;
+          console.error('[HLS Error]', data);
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                hls?.startLoad();
+                hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                hls?.recoverMediaError();
+                hls.recoverMediaError();
                 break;
               default:
+                handleVideoError();
                 break;
             }
           }
         });
-      } else if (video.canPlayType('application/x-mpegURL')) {
-        // Native HLS (Safari/iOS)
+      } else {
+        // Fallback to native src (will fail if browser cannot play it)
         video.src = videoSource;
-        const handleLoadedMetadata = () => {
-          restorePlayback();
-        };
-        video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+        video.load();
+        video.addEventListener('error', handleVideoError);
       }
     } else {
-      // Direct MP4 playback
+      // Non-HLS MP4
       video.src = videoSource;
-      const handleLoadedMetadata = () => {
-        restorePlayback();
-      };
-      video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+      video.load();
+      video.addEventListener('error', handleVideoError);
     }
 
     return () => {
-      if (hls) {
-        hls.destroy();
+      destroyed = true;
+      if (hlsInstance) {
+        hlsInstance.destroy();
       }
+      video.removeEventListener('error', handleVideoError);
+      video.pause();
     };
-  }, [videoSource]);
+  }, [videoSource, activeSourceIndex, videoSources.length]);
 
-  // Sync state on episode change
+  // Reset playback targets when the episode changes so the next metadata load can restore state cleanly
   useEffect(() => {
-    if (!videoRef.current || !currentEpisode || !anime) return;
+    if (!currentEpisode || !anime) return;
+
+    const historyRecord = watchHistory.find(
+      (h) => h.animeId === String(anime.id) && h.episodeNumber === currentEpNum
+    );
+
+    pendingSeekTimeRef.current = null;
+    pendingSeekRatioRef.current = historyRecord?.progress ?? 0;
+    pendingShouldPlayRef.current = true;
 
     setIsPlaying(false);
     setCurrentTime(0);
+    setDuration(0);
     setPlaybackRate(1);
+    setIsBuffering(true);
+    lastSavedProgressBucketRef.current = -1;
+  }, [anime?.id, currentEpisode?.id, currentEpNum]);
 
-    // Auto-play next episode
-    const playPromise = videoRef.current.play();
-    if (playPromise !== undefined) {
-      playPromise.then(() => {
-        setIsPlaying(true);
-      }).catch(() => {
-        setIsPlaying(false);
-      });
-    }
-
-    // Load progress from watchHistory in local store
-    const historyRecord = watchHistory.find(
-      h => h.animeId === String(anime.id) && h.episodeNumber === currentEpNum
-    );
-    if (historyRecord && videoRef.current) {
-      videoRef.current.currentTime = historyRecord.progress * (videoRef.current.duration || 1450);
-    }
-  }, [currentEpNum, id]);
+  useEffect(() => {
+    setActiveSourceIndex(0);
+    setStreamError(null);
+  }, [currentEpisode?.id, videoQuality]);
 
   // Keyboard shortcut listener
   useEffect(() => {
@@ -635,8 +713,10 @@ export const WatchPage: React.FC = () => {
     const dur = videoRef.current.duration || 1;
     setCurrentTime(current);
     
-    // Save progress periodically to global store and backend
-    if (current > 10 && current % 10 < 1) {
+    // Save progress once per 10-second bucket to avoid spamming storage/backend
+    const progressBucket = Math.floor(current / 10);
+    if (current > 10 && progressBucket !== lastSavedProgressBucketRef.current) {
+      lastSavedProgressBucketRef.current = progressBucket;
       const isCompleted = current / dur > 0.9;
       // Save locally
       addWatchHistory(
@@ -657,8 +737,33 @@ export const WatchPage: React.FC = () => {
   };
 
   const handleLoadedMetadata = () => {
-    if (!videoRef.current) return;
-    setDuration(videoRef.current.duration);
+    const video = videoRef.current;
+    if (!video) return;
+
+    const nextDuration = Number.isFinite(video.duration) ? video.duration : 0;
+    setDuration(nextDuration);
+    setIsBuffering(false);
+
+    const seekTime =
+      pendingSeekTimeRef.current ??
+      (pendingSeekRatioRef.current > 0 && nextDuration > 0 ? pendingSeekRatioRef.current * nextDuration : null);
+
+    if (seekTime !== null && Number.isFinite(seekTime) && seekTime >= 0) {
+      video.currentTime = Math.min(seekTime, Math.max(0, nextDuration - 0.25));
+      setCurrentTime(video.currentTime);
+    }
+
+    if (pendingShouldPlayRef.current) {
+      video.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        setIsPlaying(false);
+      });
+    }
+
+    pendingSeekTimeRef.current = null;
+    pendingSeekRatioRef.current = 0;
+    pendingShouldPlayRef.current = false;
   };
 
   const togglePlay = () => {
@@ -755,9 +860,11 @@ export const WatchPage: React.FC = () => {
 
   const changeQuality = (quality: any) => {
     if (videoRef.current) {
-      qualityChangingTimeRef.current = videoRef.current.currentTime;
-      qualityChangingPlayingRef.current = !videoRef.current.paused;
+      pendingSeekTimeRef.current = videoRef.current.currentTime;
+      pendingSeekRatioRef.current = 0;
+      pendingShouldPlayRef.current = !videoRef.current.paused;
       setIsChangingQuality(true);
+      setIsBuffering(true);
     }
     setVideoQuality(quality);
     setOpenSettings('none');
@@ -887,11 +994,7 @@ export const WatchPage: React.FC = () => {
       {/* Back to details link */}
       <button 
         onClick={() => {
-          if (location.state?.fromDetail && window.history.length > 1) {
-            navigate(-1);
-          } else {
-            navigate(`/anime/${anime.id}`);
-          }
+          navigate(`/anime/${anime.id}`, { replace: true });
         }}
         className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary hover:text-primary transition-colors focus:outline-none cursor-pointer"
       >
@@ -912,277 +1015,436 @@ export const WatchPage: React.FC = () => {
               isFullscreen ? 'h-screen w-screen border-none rounded-none' : ''
             }`}
           >
-            {/* Native Video Element */}
-            <video
-              ref={videoRef}
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleLoadedMetadata}
-              onClick={togglePlay}
-              onDoubleClick={toggleFullscreen}
-              onWaiting={() => setIsBuffering(true)}
-              onPlaying={() => {
-                setIsBuffering(false);
-                setIsPlaying(true);
-              }}
-              onSeeked={() => setIsBuffering(false)}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-              className="w-full h-full object-contain cursor-pointer"
-              playsInline
-            />
-
-            {/* Fullscreen Video Metadata Header */}
-            {isFullscreen && (
-              <div 
-                className={`absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/90 via-black/30 to-transparent flex flex-col gap-1 text-left transition-all duration-300 z-20 ${
-                  showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="px-2.5 py-0.5 text-[9px] font-bold bg-primary text-black rounded uppercase tracking-wider font-mono">
-                    {anime.content_type}
-                  </span>
-                  <h2 className="text-xl sm:text-2xl font-black text-white leading-none tracking-tight">
-                    {anime.nama_anime}
-                  </h2>
-                </div>
-                <p className="text-xs sm:text-sm text-white/80 font-medium mt-0.5">
-                  {isFilm ? 'Film Lengkap' : `Episode ${currentEpisode?.nomor_episode}: ${currentEpisode?.judul_episode || ''}`}
-                </p>
-                <div className="flex items-center gap-2 mt-1 text-[10px] text-white/60 font-medium font-sans">
-                  <span>Rating: {anime.rating_anime || 'N/A'}</span>
-                  <span>•</span>
-                  <span>Tipe: {anime.label_anime || 'N/A'}</span>
-                  <span>•</span>
-                  <span>Status: {anime.status_anime || 'N/A'}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Buffering/Loading Spinner Overlay */}
-            {(isBuffering || isChangingQuality) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-15 pointer-events-none">
-                <Loader2 className="w-12 h-12 text-primary animate-spin" />
-              </div>
-            )}
-
-            {/* Premium skips markers overlay */}
-            {showSkipIntro && (
-              <button
-                onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.currentTime = introEnd;
-                  }
+            {/* Custom Video Element */}
+            {(!isLoginRestricted && !isVipRestricted && !isSourceNotFound) && (
+              <video
+                ref={videoRef}
+                src={videoSource}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onWaiting={() => setIsBuffering(true)}
+                onSeeking={() => setIsBuffering(true)}
+                onCanPlay={() => {
+                  setIsBuffering(false);
+                  setStreamError(null);
                 }}
-                className="absolute bottom-16 right-4 z-20 px-4 py-2.5 bg-black/80 hover:bg-primary border border-primary/30 hover:border-primary text-primary hover:text-black font-extrabold text-xs rounded-xl shadow-[0_0_15px_rgba(255,102,205,0.3)] hover:scale-105 active:scale-95 transition-all duration-200"
-              >
-                Skip Intro &gt;&gt;
-              </button>
-            )}
-
-            {showSkipOutro && (
-              <button
-                onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.currentTime = outroEnd;
-                  }
+                onPlaying={() => {
+                  setIsBuffering(false);
+                  setIsPlaying(true);
+                  setStreamError(null);
                 }}
-                className="absolute bottom-16 right-4 z-20 px-4 py-2.5 bg-black/80 hover:bg-primary border border-primary/30 hover:border-primary text-primary hover:text-black font-extrabold text-xs rounded-xl shadow-[0_0_15px_rgba(255,102,205,0.3)] hover:scale-105 active:scale-95 transition-all duration-200"
-              >
-                Skip Outro &gt;&gt;
-              </button>
-            )}
-
-            {/* Custom Overlay Controls */}
-            <div 
-              className={`absolute inset-0 bg-gradient-to-t from-black/95 via-black/10 to-black/50 flex flex-col justify-end p-4 transition-opacity duration-300 z-10 ${
-                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}
-            >
-              
-              {/* Play state big center display */}
-              <div 
+                onSeeked={() => setIsBuffering(false)}
+                onPlay={() => {
+                  setIsPlaying(true);
+                  setStreamError(null);
+                }}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
+                className="w-full h-full object-contain cursor-pointer"
                 onClick={togglePlay}
                 onDoubleClick={toggleFullscreen}
-                className="absolute inset-0 flex items-center justify-center cursor-pointer bg-transparent"
+                preload="auto"
+                playsInline
+              />
+            )}
+
+            {/* Custom controls overlay wrapper */}
+            {(!isLoginRestricted && !isVipRestricted && !isSourceNotFound) && (
+              <div 
+                className={`absolute inset-0 z-10 flex flex-col justify-between transition-opacity duration-300 ${
+                  showControls || !isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+                onClick={togglePlay}
+                onDoubleClick={toggleFullscreen}
               >
-                {!isPlaying && (
-                  <div className="p-5 bg-black/60 hover:bg-black/80 backdrop-blur-md border border-primary/40 text-primary rounded-full hover:scale-110 active:scale-95 transition-all duration-300 shadow-[0_0_25px_rgba(255,102,205,0.4)] flex items-center justify-center group/playbtn">
-                    <Play className="w-9 h-9 fill-primary text-primary group-hover/playbtn:scale-105 transition-transform" />
-                  </div>
-                )}
-              </div>
-
-              {/* Progress Bar Container */}
-              <div className="flex items-center gap-3 w-full mb-3 z-20">
-                <input
-                  type="range"
-                  min={0}
-                  max={duration || 100}
-                  value={currentTime}
-                  onChange={handleProgressSeek}
-                  className="w-full player-progress-slider accent-primary cursor-pointer"
-                  style={{ '--value-percent': `${(currentTime / (duration || 1)) * 100}%` } as React.CSSProperties}
-                />
-              </div>
-
-              {/* Controls bar */}
-              <div className="flex items-center justify-between w-full z-20">
-                
-                {/* Left controls: Play, Skip, Volume, Time */}
-                <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Top bar (Minimalist Header) */}
+                <div 
+                  className="p-4 sm:p-6 flex items-start gap-4 pointer-events-auto bg-gradient-to-b from-black/85 via-black/30 to-transparent w-full text-left"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button 
-                    onClick={togglePlay} 
-                    className="p-1.5 hover:bg-white/15 hover:text-primary rounded-xl text-white transition-all active:scale-90"
-                    aria-label={isPlaying ? "Jeda video" : "Putar video"}
-                  >
-                    {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
-                  </button>
-
-                  <button 
-                    onClick={() => skipTime(-10)} 
-                    className="hidden sm:flex p-1.5 hover:bg-white/15 hover:text-primary rounded-xl text-white transition-all active:scale-90"
-                    aria-label="Kembali 10 detik"
-                  >
-                    <RotateCcw className="w-4.5 h-4.5" />
-                  </button>
-
-                  <button 
-                    onClick={() => skipTime(10)} 
-                    className="hidden sm:flex p-1.5 hover:bg-white/15 hover:text-primary rounded-xl text-white transition-all active:scale-90"
-                    aria-label="Maju 10 detik"
-                  >
-                    <RotateCw className="w-4.5 h-4.5" />
-                  </button>
-
-                  {/* Volume block */}
-                  <div className="flex items-center gap-1 sm:gap-2 group/volume">
-                    <button 
-                      onClick={toggleMute} 
-                      className="p-1.5 hover:bg-white/15 hover:text-primary rounded-xl text-white transition-all active:scale-90"
-                      aria-label={muted ? "Nyalakan suara" : "Senapkan suara"}
-                    >
-                      {muted ? (
-                        <VolumeX className="w-5 h-5 text-primary drop-shadow-[0_0_4px_rgba(255,102,205,0.6)]" />
-                      ) : (
-                        <Volume2 className="w-5 h-5 transition-transform duration-150 hover:scale-105" />
-                      )}
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={muted ? 0 : videoVolume}
-                      onChange={handleVolumeSliderChange}
-                      className="w-0 overflow-hidden opacity-0 group-hover/volume:w-16 group-hover/volume:opacity-100 transition-all duration-300 player-volume-slider cursor-pointer hidden sm:block focus:outline-none"
-                      style={{ '--volume-percent': `${(muted ? 0 : videoVolume) * 100}%` } as React.CSSProperties}
-                    />
-                  </div>
-
-                  {/* Time indicator */}
-                  <span className="text-[10px] sm:text-xs font-mono text-white/95 whitespace-nowrap ml-1 bg-black/45 px-2.5 py-1 rounded-lg border border-white/5">
-                    {formatDuration(currentTime)} / {formatDuration(duration)}
-                  </span>
-                </div>
-
-                {/* Right controls: Quality, Speed, Subtitle, Fullscreen */}
-                <div className="flex items-center gap-1 sm:gap-1.5 relative">
-                  
-                  {/* Settings / Controls */}
-                  <div className="relative">
-                    <button 
-                      onClick={() => setOpenSettings(prev => prev === 'quality' ? 'none' : 'quality')}
-                      className={`p-1.5 hover:bg-white/15 rounded-xl text-white transition-all active:scale-90 ${openSettings === 'quality' ? 'bg-white/20 text-primary' : ''}`}
-                      aria-label="Kualitas video"
-                    >
-                      <Settings className="w-5 h-5" />
-                    </button>
-
-                    {/* Quality panel */}
-                    {openSettings === 'quality' && (
-                      <div className="absolute bottom-12 right-0 w-40 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl py-2 z-35 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col text-left transform scale-100 transition-all animate-scale-up">
-                        <span className="px-3.5 py-1 text-[9px] font-bold text-muted uppercase tracking-wider">Resolusi</span>
-                        {isHls ? (
-                          <button
-                            onClick={() => changeQuality('auto')}
-                            className={`px-3.5 py-2 text-xs hover:bg-white/10 text-left transition-colors ${(videoQuality as string) === 'auto' ? 'text-primary font-semibold' : 'text-white/80'}`}
-                          >
-                            Auto (Adaptive)
-                          </button>
-                        ) : null}
-                        {['360p', '480p', '720p', '1080p'].map(q => (
-                          <button
-                            key={q}
-                            onClick={() => changeQuality(q as any)}
-                            className={`px-3.5 py-2 text-xs hover:bg-white/10 text-left transition-colors ${videoQuality === q ? 'text-primary font-semibold' : 'text-white/80'}`}
-                          >
-                            {q}
-                          </button>
-                        ))}
-                        <div className="border-t border-white/10 my-1" />
-                        <button
-                          onClick={() => setOpenSettings('speed')}
-                          className="px-3.5 py-1.5 text-xs hover:bg-white/10 text-left text-primary font-medium transition-colors flex items-center justify-between"
-                        >
-                          <span>Kecepatan</span>
-                          <span>&gt;</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Speed panel */}
-                    {openSettings === 'speed' && (
-                      <div className="absolute bottom-12 right-0 w-40 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl py-2 z-35 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col text-left transform scale-100 transition-all animate-scale-up">
-                        <span className="px-3.5 py-1 text-[9px] font-bold text-muted uppercase tracking-wider">Kecepatan</span>
-                        {[0.5, 1, 1.25, 1.5, 2].map(speed => (
-                          <button
-                            key={speed}
-                            onClick={() => changeSpeed(speed)}
-                            className={`px-3.5 py-2 text-xs hover:bg-white/10 text-left transition-colors ${playbackRate === speed ? 'text-primary font-semibold' : 'text-white/80'}`}
-                          >
-                            {speed}x
-                          </button>
-                        ))}
-                        <div className="border-t border-white/10 my-1" />
-                        <button
-                          onClick={() => setOpenSettings('quality')}
-                          className="px-3.5 py-1.5 text-xs hover:bg-white/10 text-left text-white/60 transition-colors flex items-center gap-1"
-                        >
-                          <span>&lt;</span>
-                          <span>Kembali</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Subtitle language select */}
-                  <select
-                    value={subtitleLang}
-                    onChange={(e) => {
-                      setSubtitleLang(e.target.value as any);
-                      addToast('info', `Bahasa subtitle: ${e.target.value.toUpperCase()}`);
+                    onClick={() => {
+                      if (isFullscreen) {
+                        toggleFullscreen();
+                      } else {
+                        navigate(`/anime/${anime.id}`, { replace: true });
+                      }
                     }}
-                    className="bg-black/60 border border-white/20 text-white rounded px-1.5 py-0.5 sm:px-2 sm:py-1 text-[10px] sm:text-xs font-mono font-medium focus:outline-none"
+                    className="w-8 h-8 bg-black/40 border border-white/10 hover:bg-black/70 hover:border-primary/30 text-white rounded-lg transition-all focus:outline-none cursor-pointer flex items-center justify-center shadow-lg"
+                    title={isFullscreen ? "Keluar Layar Penuh" : "Kembali ke Detail Anime"}
                   >
-                    <option value="id">SUB ID</option>
-                    <option value="en">SUB EN</option>
-                    <option value="off">MATI</option>
-                  </select>
-
-                  {/* Fullscreen Button */}
-                  <button 
-                    onClick={toggleFullscreen} 
-                    className="p-1 sm:p-1.5 hover:bg-white/10 rounded-lg text-white transition-colors"
-                  >
-                    {isFullscreen ? <Minimize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" /> : <Maximize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
+                    <ArrowLeft className="w-4 h-4 text-white" />
                   </button>
+
+                  <div className="flex flex-col select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">
+                        {anime.label_anime ?? anime.content_type ?? 'ANIME'}
+                      </span>
+                      <h2 className="text-xs sm:text-sm font-black text-white leading-tight drop-shadow-md">
+                        {anime.nama_anime}
+                      </h2>
+                    </div>
+                    <span className="text-[10px] font-bold text-text-secondary mt-0.5 drop-shadow-md">
+                      {isFilm ? 'Film Movie' : `Episode ${currentEpisode?.nomor_episode ?? currentEpNum}`} {currentEpisode?.judul_episode ? `• ${currentEpisode.judul_episode}` : ''}
+                    </span>
+                  </div>
                 </div>
 
-              </div>
+                {/* Center buffering or loading spinner space */}
+                <div className="flex-1 flex items-center justify-center pointer-events-none" />
 
-            </div>
+                {/* Bottom control panel on gradient background */}
+                <div 
+                  className="w-full pointer-events-auto mt-auto bg-gradient-to-t from-black/95 via-black/55 to-transparent pt-12 pb-4 px-4 sm:px-6 space-y-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  
+                  {/* Timeline/Progress Bar */}
+                  <div className="flex items-center gap-3 group/progress">
+                    <span className="text-[10px] font-bold font-mono text-text-secondary min-w-[36px] text-right select-none">
+                      {formatDuration(currentTime)}
+                    </span>
+                    
+                    <div className="flex-1 py-1.5 flex items-center">
+                      <input
+                        type="range"
+                        min={0}
+                        max={duration || 100}
+                        value={currentTime}
+                        onChange={handleProgressSeek}
+                        className="w-full player-progress-slider cursor-pointer focus:outline-none"
+                        style={{
+                          '--value-percent': `${(currentTime / (duration || 1)) * 100}%`
+                        } as React.CSSProperties}
+                      />
+                    </div>
+
+                    <span className="text-[10px] font-bold font-mono text-text-secondary min-w-[36px] select-none">
+                      {formatDuration(duration)}
+                    </span>
+                  </div>
+
+                  {/* Buttons Row */}
+                  <div className="flex items-center justify-between">
+                    
+                    {/* Left side: Play, Skip backward/forward, Volume, time display */}
+                    <div className="flex items-center gap-4">
+                      
+                      <button 
+                        onClick={togglePlay}
+                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        title={isPlaying ? "Jeda (Spasi)" : "Putar (Spasi)"}
+                      >
+                        {isPlaying ? (
+                          <Pause className="w-5 h-5 fill-current" />
+                        ) : (
+                          <Play className="w-5 h-5 fill-current translate-x-0.5" />
+                        )}
+                      </button>
+
+                      <button 
+                        onClick={() => skipTime(-10)}
+                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        title="Mundur 10 detik (←)"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+
+                      <button 
+                        onClick={() => skipTime(10)}
+                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        title="Maju 10 detik (→)"
+                      >
+                        <RotateCw className="w-4 h-4" />
+                      </button>
+
+                      {/* Volume controls */}
+                      <div className="flex items-center gap-2 group/volume">
+                        <button 
+                          onClick={toggleMute}
+                          className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                          title={muted ? "Nyalakan Suara (M)" : "Senyap (M)"}
+                        >
+                          {muted ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={muted ? 0 : videoVolume}
+                          onChange={handleVolumeSliderChange}
+                          className="w-0 overflow-hidden opacity-0 group-hover/volume:w-16 group-hover/volume:opacity-100 transition-all duration-300 player-volume-slider cursor-pointer focus:outline-none"
+                          style={{
+                            '--volume-percent': `${(muted ? 0 : videoVolume) * 100}%`
+                          } as React.CSSProperties}
+                        />
+                      </div>
+
+                      {/* Timeline duration status badge */}
+                      <span className="hidden sm:inline-block text-[10px] font-bold text-text-secondary/70 bg-white/5 border border-white/5 px-2 py-0.5 rounded-md select-none font-mono">
+                        {formatDuration(currentTime)} / {formatDuration(duration)}
+                      </span>
+
+                    </div>
+
+                    {/* Right side: Skip Intro/Outro, Settings, Fullscreen */}
+                    <div className="flex items-center gap-3">
+                      
+                      {/* Skip Intro Overlay Button */}
+                      {showSkipIntro && (
+                        <button
+                          onClick={() => {
+                            if (videoRef.current) {
+                              videoRef.current.currentTime = introEnd;
+                              setCurrentTime(introEnd);
+                            }
+                          }}
+                          className="bg-primary hover:bg-primary-light text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>LEWATI INTRO</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-black" />
+                        </button>
+                      )}
+
+                      {/* Skip Outro Overlay Button */}
+                      {showSkipOutro && (
+                        <button
+                          onClick={() => {
+                            if (videoRef.current) {
+                              videoRef.current.currentTime = outroEnd;
+                              setCurrentTime(outroEnd);
+                            }
+                          }}
+                          className="bg-primary hover:bg-primary-light text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>LEWATI OUTRO</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-black" />
+                        </button>
+                      )}
+
+                      {/* Settings (Speed/Quality) Dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setOpenSettings(prev => prev === 'none' ? 'quality' : 'none')}
+                          className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
+                          title="Pengaturan"
+                        >
+                          <Settings className="w-4.5 h-4.5" />
+                        </button>
+
+                        {/* Settings Menu Panel */}
+                        {openSettings !== 'none' && (
+                          <div className="absolute bottom-10 right-0 w-48 bg-black/95 border border-white/10 rounded-xl p-2.5 shadow-2xl z-30 space-y-1 backdrop-blur-md">
+                            
+                            {/* Quality Menu Header */}
+                            <div className="flex justify-between border-b border-white/10 pb-1.5 mb-1.5 select-none text-left">
+                              <span className="text-[10px] font-bold text-white/60 tracking-wider">
+                                {openSettings === 'quality' ? 'KUALITAS VIDEO' : 'KECEPATAN'}
+                              </span>
+                              <button
+                                onClick={() => setOpenSettings(openSettings === 'quality' ? 'speed' : 'quality')}
+                                className="text-[9px] font-bold text-primary hover:underline cursor-pointer"
+                              >
+                                {openSettings === 'quality' ? 'Kecepatan' : 'Kualitas'}
+                              </button>
+                            </div>
+
+                            {/* Menu Options */}
+                            {openSettings === 'quality' ? (
+                              <div className="space-y-0.5 text-left">
+                                <button
+                                  onClick={() => changeQuality('auto')}
+                                  className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                                    String(videoQuality) === 'auto' ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                  }`}
+                                >
+                                  Auto Adaptive
+                                </button>
+                                {currentEpisode?.qualities?.map((q) => (
+                                  <button
+                                    key={q.id}
+                                    onClick={() => changeQuality(q.nama_quality)}
+                                    className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors flex items-center justify-between cursor-pointer ${
+                                      String(videoQuality) === q.nama_quality ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                    }`}
+                                  >
+                                    <span>{q.nama_quality}</span>
+                                    {q.hls_size && (
+                                      <span className={`text-[8.5px] font-semibold ${String(videoQuality) === q.nama_quality ? 'text-black/75' : 'text-white/40'}`}>
+                                        {q.hls_size}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-0.5 text-left">
+                                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                                  <button
+                                    key={speed}
+                                    onClick={() => changeSpeed(speed)}
+                                    className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                                      playbackRate === speed ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                    }`}
+                                  >
+                                    {speed === 1 ? 'Normal' : `${speed}x`}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Fullscreen Button */}
+                      <button 
+                        onClick={toggleFullscreen}
+                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
+                        title={isFullscreen ? "Keluar Layar Penuh (F)" : "Layar Penuh (F)"}
+                      >
+                        {isFullscreen ? (
+                          <Minimize2 className="w-4.5 h-4.5" />
+                        ) : (
+                          <Maximize2 className="w-4.5 h-4.5" />
+                        )}
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {/* Glowing Buffering/Loading Spinner Overlay */}
+            {!isLoginRestricted && !isVipRestricted && !isSourceNotFound && (isBuffering || isChangingQuality) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20 pointer-events-none transition-all duration-300">
+                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              </div>
+            )}
+
+            {!isLoginRestricted && !isVipRestricted && !isSourceNotFound && streamError && !isBuffering && (
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-6 text-center"
+              >
+                <div className="max-w-sm space-y-3 rounded-2xl border border-white/10 bg-black/70 px-5 py-4 backdrop-blur-md">
+                  <h4 className="text-sm font-bold text-white">Player bermasalah</h4>
+                  <p className="text-xs text-white/70 leading-relaxed">{streamError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStreamError(null);
+                      setActiveSourceIndex(0);
+                      if (videoRef.current) {
+                        pendingSeekTimeRef.current = videoRef.current.currentTime;
+                        pendingShouldPlayRef.current = !videoRef.current.paused;
+                      }
+                      setIsBuffering(true);
+                    }}
+                    className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-bold text-black hover:bg-primary-light transition-colors"
+                  >
+                    Coba lagi
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Login Restricted Overlay */}
+            {isLoginRestricted && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+                <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-primary/20 bg-black/60 shadow-[0_0_50px_rgba(255,102,205,0.1)] animate-scale-up">
+                  <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30 text-primary shadow-[0_0_20px_rgba(255,102,205,0.2)]">
+                    <Lock className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      Akses Menonton Terbatas
+                    </h3>
+                    <p className="text-xs sm:text-sm text-primary-light font-bold tracking-wide uppercase font-mono">
+                      Harap Login Terlebih Dahulu
+                    </p>
+                    <p className="text-xs text-text-secondary leading-relaxed max-w-sm mx-auto">
+                      Silakan masuk atau buat akun baru terlebih dahulu untuk menikmati pemutaran video dan mengakses fitur interaktif lainnya secara lengkap.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => navigate('/login')}
+                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary-light px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
+                    >
+                      Masuk / Daftar Sekarang
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VIP Access Restricted Overlay */}
+            {isVipRestricted && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+                <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-yellow-500/20 bg-black/60 shadow-[0_0_50px_rgba(234,179,8,0.1)] animate-scale-up">
+                  <div className="mx-auto w-16 h-16 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/30 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+                    <Lock className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      Akses Awal (Early Access)
+                    </h3>
+                    <p className="text-xs sm:text-sm text-yellow-500/90 font-bold tracking-wide uppercase font-mono">
+                      Khusus Member VIP
+                    </p>
+                    <p className="text-xs text-text-secondary leading-relaxed max-w-sm mx-auto">
+                      Episode ini baru dirilis sebagai Akses Awal. Upgrade akun Anda ke VIP untuk menikmati episode ini lebih cepat!
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => navigate('/profile')}
+                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(234,179,8,0.3)] cursor-pointer"
+                    >
+                      Aktifkan VIP Sekarang
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Source Video Not Found Overlay */}
+            {isSourceNotFound && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+                <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-pink-500/20 bg-black/60 shadow-[0_0_50px_rgba(255,102,205,0.1)] animate-scale-up">
+                  <div className="mx-auto w-16 h-16 rounded-full bg-pink-500/10 flex items-center justify-center border border-pink-500/30 text-primary shadow-[0_0_20px_rgba(255,102,205,0.2)]">
+                    <VideoOff className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      Sumber Video Tidak Ditemukan
+                    </h3>
+                    <p className="text-xs text-text-secondary leading-relaxed max-w-sm mx-auto">
+                      Maaf, media video untuk episode ini belum tersedia atau sedang dalam perbaikan. Silakan hubungi admin atau coba lagi nanti.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => navigate(`/anime/${anime?.id}`)}
+                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary-light px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
+                    >
+                      Kembali ke Detail Anime
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Episode Meta Info and Navigation */}
@@ -1278,10 +1540,11 @@ export const WatchPage: React.FC = () => {
               <div className="flex-1 relative flex items-center">
                 <input
                   type="text"
-                  placeholder="Tulis opini Anda tentang episode ini..."
+                  placeholder={isLoggedIn ? "Tulis opini Anda tentang episode ini..." : "Login terlebih dahulu untuk menulis komentar..."}
+                  disabled={!isLoggedIn}
                   value={newCommentText}
                   onChange={(e) => setNewCommentText(e.target.value)}
-                  className="w-full h-10 pl-4 pr-20 bg-bg-base border border-border/80 rounded-xl text-sm focus:outline-none focus:border-primary/50 text-text-primary placeholder:text-muted"
+                  className="w-full h-10 pl-4 pr-20 bg-bg-base border border-border/80 rounded-xl text-sm focus:outline-none focus:border-primary/50 text-text-primary placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 
                 {isLoggedIn && (

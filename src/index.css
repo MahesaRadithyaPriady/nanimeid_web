@@ -245,3 +245,18 @@
     animation: toastSlideInDesktop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 }
+
+@keyframes playFlash {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.animate-play-flash {
+  animation: playFlash 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

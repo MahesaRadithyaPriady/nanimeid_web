@@ -584,6 +584,7 @@ export async function postComment(body: {
   content: string;
   kind?: 'TEXT' | 'STICKER';
   video_second?: number;
+  sticker_id?: number;
 }): Promise<{ status: number; message: string; data: ApiComment }> {
   return sendRequest<{ status: number; message: string; data: ApiComment }>('POST', '/comments', body);
 }
@@ -609,7 +610,14 @@ export async function fetchVipEligibility(): Promise<VipEligibilityResponse> {
 }
 
 /** POST /store/purchase/sticker - Buy a sticker */
-export async function purchaseSticker(itemId: number): Promise<PurchaseStickerResponse> {
-  return sendRequest<PurchaseStickerResponse>('POST', '/store/purchase/sticker', { itemId });
+export async function purchaseSticker(itemId: number, code?: string): Promise<PurchaseStickerResponse> {
+  return sendRequest<PurchaseStickerResponse>('POST', '/store/purchase/sticker', { 
+    id: itemId,
+    itemId,
+    item_id: itemId,
+    stickerId: itemId,
+    sticker_id: itemId,
+    code: code
+  });
 }
 

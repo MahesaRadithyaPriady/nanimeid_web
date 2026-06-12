@@ -348,11 +348,18 @@ export const SearchPage: React.FC = () => {
                             @{r.username}
                           </p>
                         </div>
-                        {r.vip && (
-                          <span className="mt-2 px-1.5 py-0.5 rounded bg-primary text-black font-mono font-black text-[8px] uppercase">
-                            VIP
-                          </span>
-                        )}
+                        <div className="mt-2 flex flex-wrap justify-center gap-1">
+                          {r.vip && r.vip.status === 'ACTIVE' && (
+                            <span className="px-1.5 py-0.5 rounded bg-primary text-black font-mono font-black text-[8px] uppercase shadow-glow">
+                              VIP {r.vip.vip_level}
+                            </span>
+                          )}
+                          {r.level && (
+                            <span className="px-1.5 py-0.5 rounded bg-bg-base border border-border/40 text-muted font-mono font-bold text-[8px] uppercase">
+                              LVL {r.level.level_number}
+                            </span>
+                          )}
+                        </div>
                       </Link>
                     ) : (
                       <MangaCard manga={r} />

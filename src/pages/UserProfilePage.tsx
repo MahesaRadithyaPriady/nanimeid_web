@@ -178,21 +178,31 @@ export const UserProfilePage: React.FC = () => {
               {profile.profile?.full_name || profile.username}
             </h2>
             <span className="text-xs text-muted font-semibold">@{profile.username}</span>
-            {profile.vip && (
+            <span className="hidden sm:inline text-muted">•</span>
+            <span className="text-muted font-mono bg-bg-base px-1.5 py-0.5 rounded border border-border/40 text-[10px]">ID: {profile.id ?? '-'}</span>
+            {profile.vip && profile.vip.status === 'ACTIVE' && (
               <span className="px-2 py-0.5 rounded bg-primary text-black font-mono font-black text-[9px] uppercase tracking-wider shadow-glow">
-                VIP
+                VIP {profile.vip.vip_level && profile.vip.vip_level !== 'FREE' ? profile.vip.vip_level : ''}
               </span>
             )}
             {profile.super_badge_active && (
               <span 
-                className="px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider"
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider"
                 style={{ 
                   borderColor: profile.super_badge_active.title_color || '#ff66cd',
                   color: profile.super_badge_active.title_color || '#ff66cd',
                   backgroundColor: `${profile.super_badge_active.title_color || '#ff66cd'}10`
                 }}
               >
+                {profile.super_badge_active.badge_icon && (
+                  <img src={profile.super_badge_active.badge_icon} alt="badge" className="w-3 h-3 object-contain" />
+                )}
                 {profile.super_badge_active.badge_name}
+              </span>
+            )}
+            {profile.account_status && profile.account_status !== 'ACTIVE' && (
+              <span className="px-2 py-0.5 rounded bg-red-500 text-white font-black text-[9px] uppercase tracking-wider shadow-glow-sm shadow-red-500/50">
+                {profile.account_status}
               </span>
             )}
           </div>
@@ -202,6 +212,22 @@ export const UserProfilePage: React.FC = () => {
               "{profile.profile.bio}"
             </p>
           )}
+
+          {/* Social Stats & Joined Date */}
+          <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-4 text-xs text-muted font-medium">
+            <div className="flex gap-1.5">
+              <span className="text-text-primary font-bold">{profile.social?.followers_count || 0}</span> Pengikut
+            </div>
+            <div className="flex gap-1.5">
+              <span className="text-text-primary font-bold">{profile.social?.following_count || 0}</span> Mengikuti
+            </div>
+            {profile.account_created_at && (
+              <div className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Bergabung {new Date(profile.account_created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+              </div>
+            )}
+          </div>
 
           <div className="pt-2 flex flex-wrap justify-center sm:justify-start gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider">
@@ -220,7 +246,7 @@ export const UserProfilePage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Waktu Menonton', val: formatMinutes(profile.stats?.minutes_watched), icon: <Clock className="w-5 h-5 text-primary" /> },
-          { label: 'Suka Diterima', val: `${profile.stats?.likes || 0} Like`, icon: <Heart className="w-5 h-5 text-red-500 fill-red-500/10" /> },
+          { label: 'Suka Diterima', val: `${profile.stats?.likes_received || profile.stats?.likes || 0} Like`, icon: <Heart className="w-5 h-5 text-red-500 fill-red-500/10" /> },
           { label: 'Komentar Diposting', val: `${profile.stats?.comments_count || 0} Komentar`, icon: <MessageSquare className="w-5 h-5 text-blue-400" /> }
         ].map((item, idx) => (
           <div key={idx} className="bg-bg-surface border border-border/40 rounded-2xl p-5 flex items-center gap-4 shadow-md">
@@ -285,13 +311,13 @@ export const UserProfilePage: React.FC = () => {
                       {watchedData.map((w) => (
                         <Link 
                           key={w.id} 
-                          to={`/watch/${w.episode.anime.id}/ep/${w.episode.nomor_episode}`}
+                          to={`/watch/${w.anime?.id || w.episode?.anime?.id || 1}/ep/${w.episode?.nomor_episode || 1}`}
                           className="flex items-center gap-3 p-3 bg-bg-base/40 hover:bg-bg-elevated/55 border border-border/40 rounded-xl transition-all group"
                         >
                           <div className="relative w-24 aspect-[16/9] rounded-lg overflow-hidden border border-border/60 shrink-0 bg-bg-base">
                             <img 
-                              src={w.episode.anime.gambar_anime || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop'} 
-                              alt={w.episode.judul_episode} 
+                              src={w.anime?.gambar_anime || w.anime?.image_url || w.anime?.thumbnail_url || w.anime?.banner || w.anime?.banner_url || w.anime?.cover || w.anime?.cover_url || w.anime?.poster || w.anime?.poster_url || w.anime?.image || w.episode?.anime?.gambar_anime || w.episode?.anime?.image_url || w.episode?.anime?.banner_url || w.episode?.anime?.cover_url || w.episode?.anime?.poster_url || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop'} 
+                              alt={w.episode?.judul_episode || w.episode?.title || w.episode?.nama_episode || w.episode?.episode_title || w.judul_episode || w.title || w.nama_episode || w.episode_title || 'Anime'} 
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                             {w.is_completed && (
@@ -302,13 +328,13 @@ export const UserProfilePage: React.FC = () => {
                           </div>
                           <div className="min-w-0 flex-1 text-left space-y-1">
                             <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-primary transition-colors">
-                              {w.episode.anime.nama_anime}
+                              {w.anime?.nama_anime || w.anime?.title || w.episode?.anime?.nama_anime || w.episode?.anime?.title || 'Anime Tidak Diketahui'}
                             </h4>
                             <p className="text-[10px] text-text-secondary truncate">
-                              Episode {w.episode.nomor_episode}: {w.episode.judul_episode}
+                              Episode {w.episode?.nomor_episode || w.episode?.episode_number || w.nomor_episode || w.episode_number || 1}: {w.episode?.judul_episode || w.episode?.title || w.episode?.nama_episode || w.episode?.episode_title || w.judul_episode || w.title || w.nama_episode || w.episode_title || 'Tanpa Judul'}
                             </p>
                             <span className="text-[9px] text-muted font-mono block">
-                              Ditonton {new Date(w.updatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                              Ditonton {new Date(w.last_watched || w.updatedAt || w.updated_at || w.createdAt || w.created_at || w.watched_at || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                             </span>
                           </div>
                         </Link>
@@ -380,9 +406,9 @@ export const UserProfilePage: React.FC = () => {
                         {completedData.episodes.map((item) => (
                           <div key={item.id} className="p-3 bg-bg-base/40 border border-border/40 rounded-xl flex items-center justify-between">
                             <div className="min-w-0 flex-1">
-                              <h4 className="text-xs font-bold text-text-primary truncate">{item.episode.anime.nama_anime}</h4>
+                              <h4 className="text-xs font-bold text-text-primary truncate">{item.episode?.anime?.nama_anime || 'Anime Tidak Diketahui'}</h4>
                               <p className="text-[10px] text-text-secondary truncate mt-0.5">
-                                Episode {item.episode.nomor_episode}: {item.episode.judul_episode}
+                                Episode {item.episode?.nomor_episode || 1}: {item.episode?.judul_episode || 'Tanpa Judul'}
                               </p>
                             </div>
                             <span className="text-[9px] text-muted shrink-0 font-mono">
@@ -417,16 +443,20 @@ export const UserProfilePage: React.FC = () => {
                         <p className="text-[11px] text-muted uppercase tracking-wider font-bold">Streak Absensi Saat Ini</p>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 border-t border-border/20 pt-5 text-left">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-border/20 pt-5 text-left">
                         <div className="p-3 bg-bg-base/40 border border-border/40 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-muted uppercase block">Streak Terpanjang</span>
-                          <span className="text-sm font-bold text-text-primary font-mono">{streakData.longest_streak} Hari</span>
+                          <span className="text-sm font-bold text-text-primary font-mono">{streakData.max_streak ?? streakData.longest_streak ?? 0} Hari</span>
                         </div>
                         <div className="p-3 bg-bg-base/40 border border-border/40 rounded-xl space-y-1">
-                          <span className="text-[10px] font-bold text-muted uppercase block">Absen Terakhir</span>
+                          <span className="text-[10px] font-bold text-muted uppercase block">Total Claim</span>
+                          <span className="text-sm font-bold text-text-primary font-mono">{streakData.total_claims ?? 0}</span>
+                        </div>
+                        <div className="p-3 bg-bg-base/40 border border-border/40 rounded-xl space-y-1">
+                          <span className="text-[10px] font-bold text-muted uppercase block">Claim Terakhir</span>
                           <span className="text-sm font-bold text-text-primary font-mono">
-                            {streakData.last_sign_in 
-                              ? new Date(streakData.last_sign_in).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) 
+                            {streakData.last_sign_in
+                              ? new Date(streakData.last_sign_in).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                               : '-'
                             }
                           </span>

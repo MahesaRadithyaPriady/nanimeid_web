@@ -30,6 +30,16 @@ export interface UserProfile {
   isVip?: boolean;
   level?: number;
   xp?: number;
+  minutesWatched?: number;
+  likes?: number;
+  commentsCount?: number;
+  avatarBorderActive?: any | null;
+  superBadgeActive?: any | null;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
+  accountCreatedAt?: string;
+  accountStatus?: 'ACTIVE' | 'SUSPENDED' | 'WARNED' | 'BANNED';
+  social?: { followers_count: number; following_count: number };
 }
 
 interface AppState {
@@ -138,8 +148,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         const apiUser = res.data;
         const profile: Partial<UserProfile> = {
           name: apiUser.profile?.full_name || apiUser.username,
-          email: apiUser.email || '',
           avatarUrl: apiUser.profile?.avatar_url || '',
+          ...(apiUser.email && { email: apiUser.email }),
           id: apiUser.id,
           username: apiUser.username,
           bio: apiUser.profile?.bio || '',
@@ -150,6 +160,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           isVip: apiUser.vip?.status === 'ACTIVE' || !!apiUser.vip,
           level: apiUser.level?.level_number || 1,
           xp: apiUser.stats?.xp || 0,
+          minutesWatched: apiUser.stats?.minutes_watched || 0,
+          likes: apiUser.stats?.likes_received || apiUser.stats?.likes || 0,
+          commentsCount: apiUser.stats?.comments_count || 0,
+          avatarBorderActive: apiUser.avatar_border_active,
+          superBadgeActive: apiUser.super_badge_active,
+          isOnline: apiUser.is_online,
+          lastSeenAt: apiUser.last_seen_at,
+          accountCreatedAt: apiUser.account_created_at,
+          accountStatus: apiUser.account_status,
+          social: apiUser.social,
         };
         get().updateProfile(profile);
       }

@@ -307,38 +307,69 @@ export interface PurchaseStickerResponse {
 /* ─── Profile API Interfaces ─── */
 
 export interface ApiProfileDetail {
+  id: number;
+  user_id: number;
   full_name: string | null;
-  bio: string | null;
-  gender: 'MALE' | 'FEMALE' | 'OTHER' | null;
-  birthdate: string | null;
   avatar_url: string | null;
-  banner_url: string | null;
+  bio: string | null;
+  birthdate: string | null;
+  gender: 'MALE' | 'FEMALE' | 'OTHER' | null;
+  banner_url?: string | null;
+  is_online?: boolean;
+  last_seen_at?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  minutes_watched?: number;
+  likes?: number;
+  comments_count?: number;
 }
 
 export interface ApiUserProfile {
   id: number;
   username: string;
   email?: string;
-  is_online: boolean;
-  last_seen_at: string | null;
+  is_online?: boolean;
+  last_seen_at?: string | null;
+  account_created_at?: string;
+  account_status?: 'ACTIVE' | 'SUSPENDED' | 'WARNED' | 'BANNED';
+  account_status_reason?: string | null;
+  minutes_watched?: number;
+  likes?: number;
+  comments_count?: number;
   profile?: ApiProfileDetail;
-  stats?: {
-    minutes_watched: number;
-    likes: number;
-    comments_count: number;
-    xp: number;
-    level: number;
+  user?: {
+    id: number;
+    username: string;
+    createdAt?: string;
   };
+  xp?: {
+    current_xp: number;
+    level_id: number;
+  };
+  stats?: {
+    xp?: number;
+    minutes_watched?: number;
+    likes?: number;
+    likes_received?: number;
+    likes_given?: number;
+    comments_count?: number;
+  };
+  social?: {
+    followers_count: number;
+    following_count: number;
+  };
+  followed_by_me?: boolean;
+  videoshortpost?: any[];
   vip?: {
-    status: string;
-    vip_level: string;
-    endAt: string | null;
+    status?: string;
+    vip_level?: string;
+    endAt?: string;
   };
   level?: {
     id: number;
     level_number: number;
-    title: string;
-    xp_required_total: number;
+    title?: string;
+    xp_required_total?: number;
   };
   avatar_border_active?: {
     id: number;
@@ -347,6 +378,7 @@ export interface ApiUserProfile {
     title: string;
     image_url: string;
     is_active: boolean;
+    obtained_at?: string;
   } | null;
   super_badge_active?: {
     id: number;
@@ -354,12 +386,35 @@ export interface ApiUserProfile {
     badge_name: string;
     badge_icon: string;
     title_color?: string;
+    is_active?: boolean;
+    obtained_at?: string;
+    expires_at?: string | null;
+    badge?: {
+      id: number;
+      code: string;
+      name: string;
+      badge_url: string;
+      width: number;
+      height: number;
+    };
+  } | null;
+  activeBadges?: Array<{
+    name: string;
+    icon: string;
+    title_color?: string;
+  }>;
+  comment_background?: {
+    url: string;
   } | null;
 }
 
 export interface ApiUserSearchItem {
   id: number;
   username: string;
+  user?: {
+    id: number;
+    username: string;
+  };
   profile?: {
     full_name: string | null;
     avatar_url: string | null;
@@ -368,9 +423,17 @@ export interface ApiUserSearchItem {
   vip?: {
     status: string;
     vip_level: string;
+    endAt?: string | null;
   };
   level?: {
+    id?: number;
     level_number: number;
+    xp_required_total?: number;
+    title?: string;
+  };
+  xp?: {
+    current_xp: number;
+    level_id: number;
   };
 }
 
@@ -379,15 +442,24 @@ export interface ApiProfileCommentItem {
   content: string;
   kind: 'TEXT' | 'STICKER';
   createdAt: string;
+  created_at?: string;
   episode_id?: number | null;
   anime_id?: number | null;
   anime?: {
     id: number;
-    nama_anime: string;
+    nama_anime?: string;
+    title?: string;
+    poster_url?: string;
+    gambar_anime?: string;
   };
   episode?: {
     id: number;
-    nomor_episode: number;
+    nomor_episode?: number;
+    episode_number?: number;
+    judul_episode?: string;
+    title?: string;
+    nama_episode?: string;
+    episode_title?: string;
   };
 }
 
@@ -397,15 +469,52 @@ export interface ApiProfileWatchedItem {
   user_id: number;
   progress_watching: number;
   is_completed: boolean;
+  current_second?: number;
   updatedAt: string;
-  episode: {
+  updated_at?: string;
+  createdAt?: string;
+  created_at?: string;
+  watched_at?: string;
+  last_watched?: string;
+  judul_episode?: string;
+  nomor_episode?: number;
+  episode_number?: number;
+  title?: string;
+  nama_episode?: string;
+  episode_title?: string;
+  anime?: {
+    id?: number;
+    nama_anime?: string;
+    gambar_anime?: string;
+    title?: string;
+    image_url?: string;
+    thumbnail_url?: string;
+    poster_url?: string;
+    banner?: string;
+    banner_url?: string;
+    cover?: string;
+    cover_url?: string;
+    poster?: string;
+    image?: string;
+  };
+  episode?: {
     id: number;
-    nomor_episode: number;
-    judul_episode: string;
-    anime: {
+    nomor_episode?: number;
+    episode_number?: number;
+    judul_episode?: string;
+    nama_episode?: string;
+    episode_title?: string;
+    title?: string;
+    anime?: {
       id: number;
-      nama_anime: string;
-      gambar_anime: string;
+      nama_anime?: string;
+      gambar_anime?: string;
+      title?: string;
+      image_url?: string;
+      poster_url?: string;
+      banner?: string;
+      banner_url?: string;
+      cover_url?: string;
     };
   };
 }
@@ -415,14 +524,39 @@ export interface ApiProfileCompletedItem {
   episodes: Array<{
     id: number;
     episode_id: number;
+    total_watched_seconds?: number;
+    duration_seconds?: number;
+    is_completed_flag?: boolean;
+    meets_threshold?: boolean;
+    last_watched?: string;
     updatedAt: string;
-    episode: {
+    updated_at?: string;
+    createdAt?: string;
+    created_at?: string;
+    watched_at?: string;
+    judul_episode?: string;
+    nomor_episode?: number;
+    episode_number?: number;
+    title?: string;
+    anime?: {
+      id?: number;
+      nama_anime?: string;
+      gambar_anime?: string;
+      title?: string;
+      image_url?: string;
+      poster_url?: string;
+    };
+    episode?: {
       id: number;
-      nomor_episode: number;
-      judul_episode: string;
-      anime: {
+      nomor_episode?: number;
+      episode_number?: number;
+      judul_episode?: string;
+      title?: string;
+      anime?: {
         id: number;
-        nama_anime: string;
+        nama_anime?: string;
+        title?: string;
+        poster_url?: string;
       };
     };
   }>;
@@ -430,9 +564,12 @@ export interface ApiProfileCompletedItem {
 
 export interface ApiProfileStreak {
   current_streak: number;
-  longest_streak: number;
-  last_sign_in: string | null;
+  max_streak: number;
+  total_claims?: number;
+  year?: number;
+  month?: number;
+  claim_dates?: string[];
+  longest_streak?: number;
+  last_sign_in?: string | null;
 }
-
-
 
