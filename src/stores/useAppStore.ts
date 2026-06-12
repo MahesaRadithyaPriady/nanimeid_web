@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Bookmark, WatchHistory, Anime, Manga } from '../types';
+import { fetchAnimeDetail } from '../lib/animeApi';
 
 export interface ToastMessage {
   id: string;
@@ -20,6 +21,13 @@ export interface UserProfile {
 }
 
 interface AppState {
+  // Auth
+  isLoggedIn: boolean;
+  authToken: string | null;        // JWT from backend
+  login: (profile?: Partial<UserProfile>) => void;
+  logout: () => void;
+  setAuthToken: (token: string | null) => void;
+
   // UI states
   sidebarExpanded: boolean;
   mobileMenuOpen: boolean;
@@ -60,8 +68,10 @@ interface AppState {
     animeSlug: string,
     episodeNumber: number,
     episodeTitle: string,
-    progress: number
+    progress: number,
+    animeCover?: string
   ) => void;
+  fetchAndSetMissingCovers: () => Promise<void>;
 }
 
 // Helper to load state from localStorage if available
@@ -83,6 +93,27 @@ const saveState = <T>(key: string, value: T): void => {
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
+  // Auth
+  isLoggedIn: loadSavedState('is_logged_in', false),
+  authToken: loadSavedState<string | null>('auth_token', null),
+
+  login: (profile) => {
+    saveState('is_logged_in', true);
+    set({ isLoggedIn: true });
+    if (profile) get().updateProfile(profile);
+  },
+
+  logout: () => {
+    saveState('is_logged_in', false);
+    saveState('auth_token', null);
+    set({ isLoggedIn: false, authToken: null });
+  },
+
+  setAuthToken: (token) => {
+    saveState('auth_token', token);
+    set({ authToken: token });
+  },
+
   // UI
   sidebarExpanded: true,
   mobileMenuOpen: false,
@@ -201,7 +232,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // History Actions
-  addWatchHistory: (animeId, animeTitle, animeSlug, episodeNumber, episodeTitle, progress) => set((state) => {
+  addWatchHistory: (animeId, animeTitle, animeSlug, episodeNumber, episodeTitle, progress, animeCover) => set((state) => {
     // Filter out previous record of this episode if it exists
     const cleanHistory = state.watchHistory.filter(
       (h) => !(h.animeId === animeId && h.episodeNumber === episodeNumber)
@@ -215,7 +246,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       episodeNumber,
       episodeTitle,
       progress,
-      watchedAt: Date.now()
+      watchedAt: Date.now(),
+      animeCover
     };
     
     const updated = [newHistory, ...cleanHistory].slice(0, 50); // Store up to 50 items
@@ -246,5 +278,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       watchHistory: updated,
       bookmarks: updatedBookmarks
     };
-  })
+  }),
+  fetchAndSetMissingCovers: async () => {
+    const { watchHistory } = get();
+    let updated = false;
+    const newHistory = [...watchHistory];
+    
+    for (let i = 0; i < newHistory.length; i++) {
+      const h = newHistory[i];
+      if (!h.animeCover) {
+        try {
+          const detail = await fetchAnimeDetail(h.animeId);
+          if (detail && detail.data && detail.data.gambar_anime) {
+            newHistory[i] = {
+              ...h,
+              animeCover: detail.data.gambar_anime
+            };
+            updated = true;
+          }
+        } catch (e) {
+          console.error(`Failed to fetch cover for anime ${h.animeId}:`, e);
+        }
+      }
+    }
+    
+    if (updated) {
+      set({ watchHistory: newHistory });
+      saveState('watch_history', newHistory);
+    }
+  }
 }));

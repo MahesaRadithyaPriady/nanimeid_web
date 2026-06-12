@@ -2,12 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { 
   RotateCcw, X, Flame, Clock, Tv, Trophy, BookOpen, Sliders, 
-  Filter, Star, Play, ChevronRight, ChevronLeft, Sparkles, TrendingUp, Zap
+  Filter, Star, Play, ChevronRight, ChevronLeft, Sparkles, TrendingUp, Zap, Loader2
 } from 'lucide-react';
-import { MOCK_ANIMES, MOCK_MANGAS, GENRES } from '../constants/mockData';
+import { MOCK_MANGAS, GENRES } from '../constants/mockData';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { MangaCard } from '../components/cards/MangaCard';
 import { Badge } from '../components/ui/Badge';
+import { 
+  fetchAnimeList, 
+  fetchAnimeByView, 
+  fetchAnimeByStatus, 
+  fetchAnimeByGenre, 
+  fetchAnimeGenres 
+} from '../lib/animeApi';
+import type { ApiAnime } from '../types';
 
 export const BrowsePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,6 +29,23 @@ export const BrowsePage: React.FC = () => {
 
   // Collapsible Filters Drawer
   const [showFilters, setShowFilters] = useState(false);
+
+  // Pagination page for main grid
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Shelves and metadata states
+  const [spotlightAnime, setSpotlightAnime] = useState<ApiAnime | null>(null);
+  const [isLoadingSpotlight, setIsLoadingSpotlight] = useState(true);
+  const [topRated, setTopRated] = useState<ApiAnime[]>([]);
+  const [isLoadingTopRated, setIsLoadingTopRated] = useState(true);
+  const [ongoing, setOngoing] = useState<ApiAnime[]>([]);
+  const [isLoadingOngoing, setIsLoadingOngoing] = useState(true);
+  const [genres, setGenres] = useState<string[]>([]);
+  
+  // Main results state
+  const [results, setResults] = useState<any[]>([]);
+  const [isLoadingResults, setIsLoadingResults] = useState(true);
+  const [totalResults, setTotalResults] = useState(0);
 
   // Sync state from query parameters on mount or change
   useEffect(() => {
@@ -42,6 +67,9 @@ export const BrowsePage: React.FC = () => {
     
     if (sort) setFilterSort(sort);
     else setFilterSort('latest');
+
+    // Reset pagination to page 1 whenever filters change
+    setCurrentPage(1);
   }, [searchParams]);
 
   // Set URL search params when state changes
@@ -61,6 +89,7 @@ export const BrowsePage: React.FC = () => {
     setFilterStatus('semua');
     setFilterSort('latest');
     setSearchParams({});
+    setCurrentPage(1);
   };
 
   const isFilterActive = 
@@ -69,87 +98,151 @@ export const BrowsePage: React.FC = () => {
     filterStatus !== 'semua' || 
     filterSort !== 'latest';
 
-  // Perform Filtering
-  const getFilteredResults = () => {
-    let results: Array<{ id: string; title: string; rating: number; type: string; status: string; genres: string[]; releaseDate: string; isAnime: boolean; item: any }> = [];
-
-    // Add Anime
-    if (filterType === 'semua' || filterType === 'anime') {
-      MOCK_ANIMES.forEach(anime => {
-        results.push({
-          id: anime.id,
-          title: anime.title,
-          rating: anime.rating,
-          type: anime.type,
-          status: anime.status,
-          genres: anime.genres,
-          releaseDate: anime.releaseDate,
-          isAnime: true,
-          item: anime
-        });
-      });
-    }
-
-    // Add Manga / Manhwa / Manhua
-    if (filterType === 'semua' || ['manga', 'manhwa', 'manhua'].includes(filterType)) {
-      MOCK_MANGAS.forEach(manga => {
-        // Apply type constraints
-        if (filterType === 'manhwa' && manga.type !== 'manhwa') return;
-        if (filterType === 'manhua' && manga.type !== 'manhua') return;
-        if (filterType === 'manga' && manga.type !== 'manga') return;
-
-        results.push({
-          id: manga.id,
-          title: manga.title,
-          rating: manga.rating,
-          type: manga.type,
-          status: manga.status,
-          genres: manga.genres,
-          releaseDate: manga.releaseDate,
-          isAnime: false,
-          item: manga
-        });
-      });
-    }
-
-    // Filter by Genre
-    if (filterGenre !== 'Semua') {
-      results = results.filter(r => r.genres.includes(filterGenre));
-    }
-
-    // Filter by Status
-    if (filterStatus !== 'semua') {
-      results = results.filter(r => r.status === filterStatus);
-    }
-
-    // Sort Results
-    if (filterSort === 'latest') {
-      results.sort((a, b) => b.id.localeCompare(a.id));
-    } else if (filterSort === 'rating') {
-      results.sort((a, b) => b.rating - a.rating);
-    } else if (filterSort === 'popular') {
-      results.sort((a, b) => (b.isAnime ? 1 : 0) - (a.isAnime ? 1 : 0));
-    }
-
-    return results;
-  };
-
-  const filteredResults = getFilteredResults();
-  const [visibleCount, setVisibleCount] = useState(12);
-
-  // Reset pagination when filters change
+  // Load shelves on mount
   useEffect(() => {
-    setVisibleCount(12);
-  }, [filterType, filterGenre, filterStatus, filterSort]);
+    const loadShelves = async () => {
+      // 1. Spotlight (Most viewed)
+      try {
+        setIsLoadingSpotlight(true);
+        const viewRes = await fetchAnimeByView({ limit: 1 });
+        if (viewRes.items && viewRes.items.length > 0) {
+          setSpotlightAnime(viewRes.items[0]);
+        }
+      } catch (err) {
+        console.error('Failed to load spotlight anime:', err);
+      } finally {
+        setIsLoadingSpotlight(false);
+      }
+
+      // 2. Top Rated (Sort by rating)
+      try {
+        setIsLoadingTopRated(true);
+        const topRes = await fetchAnimeList({ sortBy: 'rating_anime', order: 'desc', limit: 6 });
+        setTopRated(topRes.data || []);
+      } catch (err) {
+        console.error('Failed to load top rated anime:', err);
+      } finally {
+        setIsLoadingTopRated(false);
+      }
+
+      // 3. Ongoing
+      try {
+        setIsLoadingOngoing(true);
+        const ongoingRes = await fetchAnimeByStatus('ONGOING');
+        setOngoing((ongoingRes.data || []).slice(0, 10));
+      } catch (err) {
+        console.error('Failed to load ongoing anime:', err);
+      } finally {
+        setIsLoadingOngoing(false);
+      }
+
+      // 4. Genres options
+      try {
+        const genresRes = await fetchAnimeGenres();
+        setGenres(genresRes.data?.genres || []);
+      } catch (err) {
+        console.error('Failed to load genres:', err);
+      }
+    };
+
+    loadShelves();
+  }, []);
+
+  // Fetch results based on filters & page
+  useEffect(() => {
+    const loadResults = async () => {
+      setIsLoadingResults(true);
+      try {
+        // Local mock manga routing
+        if (['manga', 'manhwa', 'manhua'].includes(filterType)) {
+          let local = MOCK_MANGAS.map(m => ({ ...m, isAnime: false as const }));
+          
+          if (filterType === 'manga') local = local.filter(m => m.type === 'manga');
+          if (filterType === 'manhwa') local = local.filter(m => m.type === 'manhwa');
+          if (filterType === 'manhua') local = local.filter(m => m.type === 'manhua');
+
+          if (filterGenre !== 'Semua') {
+            local = local.filter(m => m.genres.includes(filterGenre));
+          }
+          if (filterStatus !== 'semua') {
+            local = local.filter(m => m.status === filterStatus);
+          }
+          if (filterSort === 'rating') {
+            local.sort((a, b) => b.rating - a.rating);
+          } else {
+            local.sort((a, b) => b.id.localeCompare(a.id));
+          }
+
+          // Client-side pagination logic
+          const pageSize = 12;
+          const paginated = local.slice(0, currentPage * pageSize);
+          setResults(paginated);
+          setTotalResults(local.length);
+          setIsLoadingResults(false);
+          return;
+        }
+
+        // Fetch Anime from backend API
+        let animeItems: ApiAnime[] = [];
+        let total = 0;
+
+        if (filterGenre !== 'Semua') {
+          const res = await fetchAnimeByGenre(filterGenre, { page: currentPage, limit: 12 });
+          animeItems = res.items || [];
+          total = res.total || 0;
+        } else if (filterStatus !== 'semua') {
+          let statusParam = filterStatus.toUpperCase();
+          if (statusParam === 'COMPLETED') statusParam = 'FINISHED';
+          const res = await fetchAnimeByStatus(statusParam);
+          animeItems = res.data || [];
+          total = res.data?.length || 0;
+        } else {
+          let sortBy = 'id';
+          let order = 'desc';
+          if (filterSort === 'rating') {
+            sortBy = 'rating_anime';
+          } else if (filterSort === 'popular') {
+            sortBy = 'view_anime';
+          }
+          
+          const res = await fetchAnimeList({
+            page: currentPage,
+            limit: 12,
+            sortBy,
+            order,
+          });
+          animeItems = res.data || [];
+          total = res.meta?.total || animeItems.length;
+        }
+
+        const formattedAnime = animeItems.map(a => ({ ...a, isAnime: true as const }));
+
+        if (filterType === 'semua') {
+          // Merge some local mangas to complete "Semua" tab
+          let localManga = MOCK_MANGAS.map(m => ({ ...m, isAnime: false as const }));
+          if (filterGenre !== 'Semua') {
+            localManga = localManga.filter(m => m.genres.includes(filterGenre));
+          }
+          const combined = [...formattedAnime, ...localManga];
+          setResults(combined);
+          setTotalResults(total + localManga.length);
+        } else {
+          setResults(formattedAnime);
+          setTotalResults(total);
+        }
+      } catch (err) {
+        console.error('Failed to load filtered results:', err);
+      } finally {
+        setIsLoadingResults(false);
+      }
+    };
+
+    loadResults();
+  }, [filterType, filterGenre, filterStatus, filterSort, currentPage]);
 
   const loadMore = () => {
-    setVisibleCount(prev => prev + 12);
+    setCurrentPage(prev => prev + 1);
   };
-
-  // Data for sections
-  const topRated = [...MOCK_ANIMES].sort((a, b) => b.rating - a.rating).slice(0, 5);
-  const spotlightAnime = MOCK_ANIMES.find(a => a.isFeatured) || MOCK_ANIMES[0];
-  const ongoingAnimes = MOCK_ANIMES.filter(a => a.status === 'ongoing');
 
   // Quick filter chips (YouTube-style)
   const quickChips = [
@@ -168,67 +261,73 @@ export const BrowsePage: React.FC = () => {
     topRatedScrollRef.current.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
   };
 
+  const genreList = genres.length > 0 ? genres : GENRES;
+
   return (
     <div className="space-y-8 pb-16">
       
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 1. SPOTLIGHT FEATURED BANNER — Big visual hero for Jelajahi */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="relative w-full h-[260px] xs:h-[300px] sm:h-[340px] md:h-[380px] rounded-2xl overflow-hidden group cursor-pointer border border-border/30">
-        {/* BG Image */}
-        <img 
-          src={spotlightAnime.coverUrl} 
-          alt={spotlightAnime.title}
-          className="absolute inset-0 w-full h-full object-cover brightness-[0.55] group-hover:scale-[1.03] transition-transform duration-700"
-        />
-        {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-bg-base via-bg-base/30 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-bg-base/70 via-transparent to-transparent" />
-        
-        {/* Content */}
-        <div className="absolute bottom-0 left-0 p-4 sm:p-6 md:p-8 z-10 text-left max-w-xl">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-[11px] font-bold uppercase tracking-widest text-primary">Sorotan Jelajahi</span>
+      {isLoadingSpotlight ? (
+        <div className="w-full h-[260px] xs:h-[300px] sm:h-[340px] md:h-[380px] rounded-2xl bg-bg-surface animate-pulse border border-border/30 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : spotlightAnime ? (
+        <div className="relative w-full h-[260px] xs:h-[300px] sm:h-[340px] md:h-[380px] rounded-2xl overflow-hidden group cursor-pointer border border-border/30">
+          {/* BG Image */}
+          <img 
+            src={spotlightAnime.gambar_anime} 
+            alt={spotlightAnime.nama_anime}
+            className="absolute inset-0 w-full h-full object-cover brightness-[0.55] group-hover:scale-[1.03] transition-transform duration-700"
+          />
+          {/* Gradient overlays */}
+          <div className="absolute inset-0 bg-gradient-to-t from-bg-base via-bg-base/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg-base/70 via-transparent to-transparent" />
+          
+          {/* Content */}
+          <div className="absolute bottom-0 left-0 p-4 sm:p-6 md:p-8 z-10 text-left max-w-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span className="text-[11px] font-bold uppercase tracking-widest text-primary">Sorotan Jelajahi</span>
+            </div>
+            <h2 className="text-lg sm:text-2xl md:text-3xl font-extrabold font-heading text-text-primary leading-tight tracking-tight mb-2">
+              {spotlightAnime.nama_anime}
+            </h2>
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-text-secondary mb-3">
+              <span className="flex items-center gap-1 text-yellow-400">
+                <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                <strong className="font-mono text-text-primary">{(spotlightAnime.rating_anime ?? 0).toFixed(1)}</strong>
+              </span>
+              <span className="w-1 h-1 rounded-full bg-white/30" />
+              <span>{(spotlightAnime.studio_anime ?? []).join(', ') || '-'}</span>
+              <span className="w-1 h-1 rounded-full bg-white/30" />
+              <span>{(spotlightAnime.genre_anime ?? []).slice(0, 2).join(', ')}</span>
+            </div>
+            <p className="hidden xs:block text-xs sm:text-sm text-text-secondary/80 line-clamp-2 mb-4 max-w-md leading-relaxed">
+              {spotlightAnime.sinopsis_anime}
+            </p>
+            <div className="flex items-center gap-3">
+              <Link
+                to={`/anime/${spotlightAnime.id}`}
+                className="flex items-center gap-1.5 px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs sm:text-sm hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all shadow-glow"
+              >
+                <Play className="w-3.5 h-3.5 fill-black text-black" />
+                <span>Lihat Detail</span>
+              </Link>
+            </div>
           </div>
-          <h2 className="text-lg sm:text-2xl md:text-3xl font-extrabold font-heading text-text-primary leading-tight tracking-tight mb-2">
-            {spotlightAnime.title}
-          </h2>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-text-secondary mb-3">
-            <span className="flex items-center gap-1 text-yellow-400">
-              <Star className="w-3.5 h-3.5 fill-yellow-400" />
-              <strong className="font-mono text-text-primary">{spotlightAnime.rating.toFixed(1)}</strong>
-            </span>
-            <span className="w-1 h-1 rounded-full bg-white/30" />
-            <span>{spotlightAnime.studio}</span>
-            <span className="w-1 h-1 rounded-full bg-white/30" />
-            <span>{spotlightAnime.genres.slice(0, 2).join(', ')}</span>
-          </div>
-          <p className="hidden xs:block text-xs sm:text-sm text-text-secondary/80 line-clamp-2 mb-4 max-w-md leading-relaxed">
-            {spotlightAnime.description}
-          </p>
-          <div className="flex items-center gap-3">
-            <Link
-              to={`/anime/${spotlightAnime.slug}`}
-              className="flex items-center gap-1.5 px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs sm:text-sm hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all shadow-glow"
-            >
-              <Play className="w-3.5 h-3.5 fill-black" />
-              <span>Lihat Detail</span>
-            </Link>
+
+          {/* Floating genre tags (top-right) */}
+          <div className="absolute top-4 right-4 z-10 hidden sm:flex gap-2">
+            {(spotlightAnime.genre_anime ?? []).slice(0, 3).map(g => (
+              <Badge key={g} variant="genre" className="bg-black/50 backdrop-blur-md text-white/90 border border-white/10 text-[10px] font-semibold px-2.5 py-0.5">
+                {g}
+              </Badge>
+            ))}
           </div>
         </div>
-
-        {/* Floating genre tags (top-right, hidden on mobile to avoid layout overlap) */}
-        <div className="absolute top-4 right-4 z-10 hidden sm:flex gap-2">
-          {spotlightAnime.genres.slice(0, 3).map(g => (
-            <Badge key={g} variant="genre" className="bg-black/50 backdrop-blur-md text-white/90 border border-white/10 text-[10px] font-semibold px-2.5 py-0.5">
-              {g}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-
+      ) : null}
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 3. TOP RATED SHELF — Horizontal scroll with rank badges       */}
@@ -258,96 +357,113 @@ export const BrowsePage: React.FC = () => {
         </div>
 
         {/* Horizontal Scroll */}
-        <div 
-          ref={topRatedScrollRef}
-          className="flex gap-4 overflow-x-auto no-scrollbar snap-x scroll-smooth pb-2"
-        >
-          {topRated.map((anime, index) => (
-            <Link
-              key={anime.id}
-              to={`/anime/${anime.slug}`}
-              className="relative shrink-0 w-[260px] sm:w-[300px] snap-start group"
-            >
-              {/* Horizontal card with rank */}
-              <div className="relative h-[140px] sm:h-[160px] rounded-2xl overflow-hidden border border-border/30 group-hover:border-primary/30 transition-all group-hover:shadow-glow">
-                <img 
-                  src={anime.coverUrl} 
-                  alt={anime.title}
-                  className="absolute inset-0 w-full h-full object-cover brightness-[0.6] group-hover:brightness-[0.5] group-hover:scale-105 transition-all duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                
-                {/* Rank number watermark */}
-                <div className="absolute -left-2 -bottom-4 z-10">
-                  <span className={`text-[72px] font-black font-heading leading-none tracking-tighter ${
-                    index === 0 ? 'text-yellow-400/40' : index === 1 ? 'text-gray-300/30' : index === 2 ? 'text-orange-400/30' : 'text-white/15'
-                  }`}>
-                    {index + 1}
-                  </span>
-                </div>
-
-                {/* Content overlay */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 pl-12 z-10">
-                  <h3 className="text-sm font-bold text-text-primary line-clamp-1 mb-1 group-hover:text-primary transition-colors">
-                    {anime.title}
-                  </h3>
-                  <div className="flex items-center gap-2 text-[11px] text-text-secondary">
-                    <span className="flex items-center gap-0.5 text-yellow-400">
-                      <Star className="w-3 h-3 fill-yellow-400" />
-                      {anime.rating.toFixed(1)}
+        {isLoadingTopRated ? (
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="shrink-0 w-[260px] sm:w-[300px] h-[140px] sm:h-[160px] rounded-2xl bg-bg-surface animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div 
+            ref={topRatedScrollRef}
+            className="flex gap-4 overflow-x-auto no-scrollbar snap-x scroll-smooth pb-2"
+          >
+            {topRated.map((anime, index) => (
+              <Link
+                key={anime.id}
+                to={`/anime/${anime.id}`}
+                className="relative shrink-0 w-[260px] sm:w-[300px] snap-start group"
+              >
+                {/* Horizontal card with rank */}
+                <div className="relative h-[140px] sm:h-[160px] rounded-2xl overflow-hidden border border-border/30 group-hover:border-primary/30 transition-all group-hover:shadow-glow">
+                  <img 
+                    src={anime.gambar_anime} 
+                    alt={anime.nama_anime}
+                    className="absolute inset-0 w-full h-full object-cover brightness-[0.6] group-hover:brightness-[0.5] group-hover:scale-105 transition-all duration-500"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  
+                  {/* Rank number watermark */}
+                  <div className="absolute -left-2 -bottom-4 z-10">
+                    <span className={`text-[72px] font-black font-heading leading-none tracking-tighter ${
+                      index === 0 ? 'text-yellow-400/40' : index === 1 ? 'text-gray-300/30' : index === 2 ? 'text-orange-400/30' : 'text-white/15'
+                    }`}>
+                      {index + 1}
                     </span>
-                    <span className="w-1 h-1 rounded-full bg-white/30" />
-                    <span>{anime.genres[0]}</span>
-                    <span className="w-1 h-1 rounded-full bg-white/30" />
-                    <span>{anime.episodeCount} Ep</span>
                   </div>
-                </div>
 
-                {/* Play button on hover */}
-                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all z-20">
-                  <div className="w-9 h-9 rounded-full bg-primary/90 flex items-center justify-center shadow-glow transform scale-75 group-hover:scale-100 transition-all">
-                    <Play className="w-4 h-4 fill-black text-black translate-x-[0.5px]" />
+                  {/* Content overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-4 pl-12 z-10 text-left">
+                    <h3 className="text-sm font-bold text-text-primary line-clamp-1 mb-1 group-hover:text-primary transition-colors">
+                      {anime.nama_anime}
+                    </h3>
+                    <div className="flex items-center gap-2 text-[11px] text-text-secondary">
+                      <span className="flex items-center gap-0.5 text-yellow-400">
+                        <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                        {(anime.rating_anime ?? 0).toFixed(1)}
+                      </span>
+                      <span className="w-1 h-1 rounded-full bg-white/30" />
+                      <span>{anime.genre_anime?.[0] || '-'}</span>
+                      <span className="w-1 h-1 rounded-full bg-white/30" />
+                      <span>{anime.episodes_count ?? 0} Ep</span>
+                    </div>
+                  </div>
+
+                  {/* Play button on hover */}
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all z-20">
+                    <div className="w-9 h-9 rounded-full bg-primary/90 flex items-center justify-center shadow-glow transform scale-75 group-hover:scale-100 transition-all">
+                      <Play className="w-4 h-4 fill-black text-black translate-x-[0.5px]" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
-
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 4. ONGOING NOW — Small horizontal shelf with status indicator */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {ongoingAnimes.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex gap-2.5 items-center text-left">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
-                <Tv className="w-5 h-5 text-green-400" />
-              </div>
-              <div>
-                <h2 className="text-base md:text-lg font-bold font-heading text-text-primary tracking-tight leading-tight">
-                  Sedang Tayang
-                </h2>
-                <span className="text-[11px] text-muted font-medium">Episode baru setiap minggu</span>
-              </div>
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex gap-2.5 items-center text-left">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
+              <Tv className="w-5 h-5 text-green-400" />
             </div>
-            <Link to="/browse?status=ongoing" className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary-light transition-colors shrink-0">
-              <span>Lihat Semua</span>
-              <ChevronRight className="w-4 h-4" />
-            </Link>
+            <div>
+              <h2 className="text-base md:text-lg font-bold font-heading text-text-primary tracking-tight leading-tight">
+                Sedang Tayang
+              </h2>
+              <span className="text-[11px] text-muted font-medium">Episode baru setiap minggu</span>
+            </div>
           </div>
+          <Link to="/browse?status=ongoing" className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary-light transition-colors shrink-0">
+            <span>Lihat Semua</span>
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+        
+        {isLoadingOngoing ? (
+          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="w-[140px] sm:w-[160px] md:w-[180px] aspect-[2/3] rounded-2xl bg-bg-surface animate-pulse" />
+            ))}
+          </div>
+        ) : ongoing.length > 0 ? (
           <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x scroll-smooth pb-2">
-            {ongoingAnimes.map((anime) => (
+            {ongoing.map((anime) => (
               <div key={anime.id} className="w-[140px] sm:w-[160px] md:w-[180px] shrink-0 snap-start">
-                <AnimeCard anime={anime} />
+                <AnimeCard apiAnime={anime} />
               </div>
             ))}
           </div>
-        </div>
-      )}
-
+        ) : (
+          <div className="py-8 text-center text-xs text-muted">
+            Tidak ada anime yang sedang tayang saat ini.
+          </div>
+        )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 5. EXPLORE SHORTCUT CARDS — Visual category hubs              */}
@@ -366,7 +482,7 @@ export const BrowsePage: React.FC = () => {
         </div>
         <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-3">
           {[
-            { lbl: 'Trending', icon: <Flame className="w-5 h-5" />, onClick: () => updateParams('sort', 'rating'), gradient: 'from-orange-500/20 to-red-500/20', iconColor: 'text-orange-400' },
+            { lbl: 'Trending', icon: <Flame className="w-5 h-5" />, onClick: () => updateParams('sort', 'popular'), gradient: 'from-orange-500/20 to-red-500/20', iconColor: 'text-orange-400' },
             { lbl: 'Rilis Terbaru', icon: <Clock className="w-5 h-5" />, onClick: () => updateParams('sort', 'latest'), gradient: 'from-blue-500/20 to-cyan-500/20', iconColor: 'text-blue-400' },
             { lbl: 'Ongoing', icon: <Tv className="w-5 h-5" />, onClick: () => updateParams('status', 'ongoing'), gradient: 'from-green-500/20 to-emerald-500/20', iconColor: 'text-green-400' },
             { lbl: 'Tamat', icon: <Trophy className="w-5 h-5" />, onClick: () => updateParams('status', 'completed'), gradient: 'from-yellow-500/20 to-amber-500/20', iconColor: 'text-yellow-400' },
@@ -388,7 +504,6 @@ export const BrowsePage: React.FC = () => {
         </div>
       </div>
 
-
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 6. MAIN RESULTS — Filter bar + varied grid                    */}
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -403,7 +518,7 @@ export const BrowsePage: React.FC = () => {
               <h2 className="text-base md:text-lg font-bold font-heading text-text-primary tracking-tight leading-tight">
                 Semua Konten
               </h2>
-              <span className="text-[11px] text-muted font-medium">{filteredResults.length} judul ditemukan</span>
+              <span className="text-[11px] text-muted font-medium">{totalResults} judul ditemukan</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -484,7 +599,17 @@ export const BrowsePage: React.FC = () => {
                 Genre
               </h4>
               <div className="grid grid-cols-2 gap-x-1 gap-y-1 max-h-48 overflow-y-auto scrollbar-pink pr-1">
-                {GENRES.map(g => (
+                <button
+                  onClick={() => updateParams('genre', 'Semua')}
+                  className={`text-xs text-left font-medium px-2.5 py-1.5 rounded-lg transition-all focus:outline-none truncate ${
+                    filterGenre === 'Semua' 
+                      ? 'text-primary bg-primary/10 font-bold' 
+                      : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
+                  }`}
+                >
+                  Semua
+                </button>
+                {genreList.map(g => (
                   <button
                     key={g}
                     onClick={() => updateParams('genre', g)}
@@ -589,18 +714,23 @@ export const BrowsePage: React.FC = () => {
         )}
 
         {/* Results Grid */}
-        {filteredResults.length > 0 ? (
+        {isLoadingResults && currentPage === 1 ? (
+          <div className="py-24 flex flex-col items-center justify-center">
+            <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+            <p className="text-sm text-muted">Memuat hasil filter...</p>
+          </div>
+        ) : results.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
-            {filteredResults.slice(0, visibleCount).map((item, index) => (
+            {results.map((item, index) => (
               <div 
                 key={item.id} 
                 className="animate-fade-in"
-                style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
+                style={{ animationDelay: `${Math.min(index * 20, 200)}ms` }}
               >
                 {item.isAnime ? (
-                  <AnimeCard anime={item.item} />
+                  <AnimeCard apiAnime={item} />
                 ) : (
-                  <MangaCard manga={item.item} />
+                  <MangaCard manga={item} />
                 )}
               </div>
             ))}
@@ -619,7 +749,7 @@ export const BrowsePage: React.FC = () => {
         )}
 
         {/* Load More */}
-        {filteredResults.length > visibleCount && (
+        {results.length < totalResults && !isLoadingResults && (
           <div className="flex justify-center mt-8">
             <button
               onClick={loadMore}
@@ -627,6 +757,12 @@ export const BrowsePage: React.FC = () => {
             >
               Muat Lebih Banyak
             </button>
+          </div>
+        )}
+
+        {isLoadingResults && currentPage > 1 && (
+          <div className="py-6 flex justify-center">
+            <Loader2 className="w-6 h-6 text-primary animate-spin" />
           </div>
         )}
       </div>

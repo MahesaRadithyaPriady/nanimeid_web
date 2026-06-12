@@ -11,12 +11,16 @@ interface MangaCardProps {
 
 export const MangaCard: React.FC<MangaCardProps> = ({ manga }) => {
   const navigate = useNavigate();
-  const { addBookmark, removeBookmark, isBookmarked, addToast } = useAppStore();
+  const { addBookmark, removeBookmark, isBookmarked, addToast, isLoggedIn } = useAppStore();
   const bookmarked = isBookmarked(manga.id, 'manga');
 
   const handleBookmarkToggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isLoggedIn) {
+      addToast('info', 'Login dulu untuk menyimpan konten!');
+      return;
+    }
     if (bookmarked) {
       removeBookmark(manga.id, 'manga');
       addToast('info', `Dihapus dari simpanan: ${manga.title}`);

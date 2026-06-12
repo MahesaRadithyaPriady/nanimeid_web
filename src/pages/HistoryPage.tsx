@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { History, Trash2, Play, AlertCircle, Compass } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
 
 export const HistoryPage: React.FC = () => {
   const navigate = useNavigate();
-  const { watchHistory, addToast } = useAppStore();
+  const { watchHistory, addToast, fetchAndSetMissingCovers } = useAppStore();
+
+  useEffect(() => {
+    fetchAndSetMissingCovers();
+  }, [fetchAndSetMissingCovers]);
 
   // For this mock layout, we will pull history from the store.
   // We can let the user clear items or reset history.
@@ -90,13 +94,9 @@ export const HistoryPage: React.FC = () => {
                   
                   {/* Dynamic cover fallback based on ID */}
                   <img
-                    src={`https://images.unsplash.com/photo-${1500000000000 + (h.episodeNumber * 100000)}?w=400&auto=format&fit=crop`}
+                    src={h.animeCover || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop'}
                     alt={h.episodeTitle}
                     className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform"
-                    onError={(e) => {
-                      // fallback
-                      e.currentTarget.style.display = 'none';
-                    }}
                   />
 
                   {/* Play Action Hover overlay */}

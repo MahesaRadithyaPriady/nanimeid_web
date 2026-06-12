@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, Mic, ArrowLeft } from 'lucide-react';
+import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, Mic, ArrowLeft, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
-import { MOCK_ANIMES, MOCK_MANGAS } from '../../constants/mockData';
+import { UserAvatar } from '../ui/UserAvatar';
+import { MOCK_MANGAS } from '../../constants/mockData';
+import { fetchLiveSearch } from '../../lib/animeApi';
 
 export const Topbar: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { toggleSidebar, userProfile, addToast } = useAppStore();
+  const { toggleSidebar, userProfile, addToast, isLoggedIn, logout } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -21,6 +23,54 @@ export const Topbar: React.FC = () => {
   const [history, setHistory] = useState<string[]>(['Naruto', 'Solo Leveling', 'Frieren']);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Dynamic search suggestions
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; title: string; slug: string; type: 'anime' | 'manga' }>>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Debounced search suggestions fetching from backend
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    let active = true;
+    const timeoutId = setTimeout(async () => {
+      setIsLoadingSuggestions(true);
+      try {
+        const animeRes = await fetchLiveSearch(searchQuery, { limit: 5 });
+        if (!active) return;
+
+        const matchedAnimes = (animeRes.data ?? []).map(a => ({
+          id: String(a.id),
+          title: a.nama_anime,
+          slug: String(a.id),
+          type: 'anime' as const
+        }));
+
+        const q = searchQuery.toLowerCase();
+        const matchedMangas = MOCK_MANGAS.filter(m => m.title.toLowerCase().includes(q))
+          .map(m => ({
+            id: m.id,
+            title: m.title,
+            slug: m.slug,
+            type: 'manga' as const
+          }));
+
+        setSuggestions([...matchedAnimes, ...matchedMangas].slice(0, 5));
+      } catch (err) {
+        console.error('Error fetching suggestions:', err);
+      } finally {
+        if (active) setIsLoadingSuggestions(false);
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [searchQuery]);
 
   // Sync with search param 'q'
   useEffect(() => {
@@ -93,21 +143,7 @@ export const Topbar: React.FC = () => {
     toggleSidebar();
   };
 
-  // Get matching suggestions
-  const getSuggestions = () => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase();
-    
-    const matchedAnimes = MOCK_ANIMES.filter(a => a.title.toLowerCase().includes(q))
-      .map(a => ({ id: a.id, title: a.title, slug: a.slug, type: 'anime' as const }));
-    
-    const matchedMangas = MOCK_MANGAS.filter(m => m.title.toLowerCase().includes(q))
-      .map(m => ({ id: m.id, title: m.title, slug: m.slug, type: 'manga' as const }));
 
-    return [...matchedAnimes, ...matchedMangas].slice(0, 5);
-  };
-
-  const suggestions = getSuggestions();
 
   // Shared suggestion dropdown content (used in both desktop and mobile)
   const renderSuggestionDropdown = () => (
@@ -148,8 +184,9 @@ export const Topbar: React.FC = () => {
       {/* Autocomplete suggestions */}
       {searchQuery.trim() && (
         <div className="p-2">
-          <span className="px-3 py-1.5 text-[10px] font-bold font-heading text-muted uppercase tracking-wider block">
-            Hasil Terkait
+          <span className="px-3 py-1.5 text-[10px] font-bold font-heading text-muted uppercase tracking-wider flex items-center justify-between">
+            <span>Hasil Terkait</span>
+            {isLoadingSuggestions && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />}
           </span>
           {suggestions.length > 0 ? (
             suggestions.map((item) => (
@@ -290,69 +327,83 @@ export const Topbar: React.FC = () => {
             <Search className="w-5 h-5" />
           </button>
 
-          {/* Notification Icon */}
-          <button
-            onClick={() => addToast('info', 'Anda tidak memiliki notifikasi baru.')}
-            className="relative p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
-            aria-label="Notifikasi"
-          >
-            <Bell className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full animate-pulse shadow-glow" />
-          </button>
+          {isLoggedIn ? (
+            <>
+              {/* Notification Icon */}
+              <button
+                onClick={() => addToast('info', 'Anda tidak memiliki notifikasi baru.')}
+                className="relative p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+                aria-label="Notifikasi"
+              >
+                <Bell className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full animate-pulse shadow-glow" />
+              </button>
 
-          {/* User Profile Avatar with dropdown */}
-          <div className="relative" ref={profileMenuRef}>
-            <button
-              onClick={() => setShowProfileMenu(prev => !prev)}
-              className="flex items-center rounded-full border border-border hover:border-primary overflow-hidden focus:outline-none transition-all active:scale-95"
-              aria-label="Menu profil"
-            >
-              <img
-                src={userProfile.avatarUrl}
-                alt="Profil User"
-                className="w-7 h-7 sm:w-8 sm:h-8 object-cover"
-              />
-            </button>
-
-            {/* Profile Dropdown Menu */}
-            {showProfileMenu && (
-              <div className="absolute right-0 top-11 w-48 bg-bg-elevated border border-border/80 rounded-2xl shadow-glow-lg py-2 overflow-hidden z-50 text-left animate-scale-up">
-                <div className="px-4 py-2 border-b border-border/50">
-                  <p className="text-sm font-semibold text-text-primary truncate">{userProfile.name}</p>
-                  <p className="text-xs text-muted truncate">{userProfile.email}</p>
-                </div>
-                
-                <Link
-                  to="/profile"
-                  onClick={() => setShowProfileMenu(false)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
-                >
-                  <User className="w-4 h-4 text-muted" />
-                  <span>Profil saya</span>
-                </Link>
-                
-                <Link
-                  to="/bookmarks"
-                  onClick={() => setShowProfileMenu(false)}
-                  className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
-                >
-                  <Bell className="w-4 h-4 text-muted" />
-                  <span>Simpanan</span>
-                </Link>
-                
+              {/* User Profile Avatar with dropdown */}
+              <div className="relative" ref={profileMenuRef}>
                 <button
-                  onClick={() => {
-                    setShowProfileMenu(false);
-                    addToast('info', 'Fitur Log Out dinonaktifkan dalam mode demonstrasi.');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface hover:text-red-400 text-sm text-text-primary text-left transition-colors"
+                  onClick={() => setShowProfileMenu(prev => !prev)}
+                  className="flex items-center rounded-full border border-border hover:border-primary overflow-hidden focus:outline-none transition-all active:scale-95"
+                  aria-label="Menu profil"
                 >
-                  <LogOut className="w-4 h-4 text-muted" />
-                  <span>Keluar</span>
+                  <UserAvatar
+                    src={userProfile.avatarUrl}
+                    name={userProfile.name}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-xs font-bold"
+                  />
                 </button>
+
+                {/* Profile Dropdown Menu */}
+                {showProfileMenu && (
+                  <div className="absolute right-0 top-11 w-48 bg-bg-elevated border border-border/80 rounded-2xl shadow-glow-lg py-2 overflow-hidden z-50 text-left animate-scale-up">
+                    <div className="px-4 py-2 border-b border-border/50">
+                      <p className="text-sm font-semibold text-text-primary truncate">{userProfile.name}</p>
+                      <p className="text-xs text-muted truncate">{userProfile.email}</p>
+                    </div>
+                    
+                    <Link
+                      to="/profile"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
+                    >
+                      <User className="w-4 h-4 text-muted" />
+                      <span>Profil saya</span>
+                    </Link>
+                    
+                    <Link
+                      to="/bookmarks"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
+                    >
+                      <Bell className="w-4 h-4 text-muted" />
+                      <span>Simpanan</span>
+                    </Link>
+                    
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        logout();
+                        navigate('/login');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface hover:text-red-400 text-sm text-text-primary text-left transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 text-muted" />
+                      <span>Keluar</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            /* ─── Login button (unauthenticated) ─── */
+            <Link
+              to="/login"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-gradient-to-r from-primary to-primary-light text-black font-semibold text-xs sm:text-sm hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all shadow-glow focus:outline-none whitespace-nowrap"
+            >
+              <User className="w-4 h-4" />
+              <span>Masuk</span>
+            </Link>
+          )}
         </div>
       </header>
 

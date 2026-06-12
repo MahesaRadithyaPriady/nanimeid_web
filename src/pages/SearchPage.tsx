@@ -1,55 +1,146 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { Search, Compass, Star, Play, Plus, Check } from 'lucide-react';
-import { MOCK_ANIMES, MOCK_MANGAS } from '../constants/mockData';
+import { Search, Compass, Star, Play, Plus, Check, Loader2 } from 'lucide-react';
+import { MOCK_MANGAS } from '../constants/mockData';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { MangaCard } from '../components/cards/MangaCard';
 import { Badge } from '../components/ui/Badge';
 import { useAppStore } from '../stores/useAppStore';
+import { fetchSearchPaginated } from '../lib/animeApi';
+import type { ApiAnime, Anime } from '../types';
 
 export const SearchPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
-  const { addBookmark, removeBookmark, isBookmarked, addToast } = useAppStore();
+  const { addBookmark, removeBookmark, isBookmarked, addToast, isLoggedIn } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'semua' | 'anime' | 'manga'>('semua');
+  const [animeResults, setAnimeResults] = useState<ApiAnime[]>([]);
+  const [mangaResults, setMangaResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Search execution
-  const getSearchResults = () => {
-    if (!query.trim()) return [];
+  // Sync / perform search on query change
+  useEffect(() => {
+    if (!query.trim()) {
+      setAnimeResults([]);
+      setMangaResults([]);
+      return;
+    }
+
+    // 1. Local Manga Search
     const q = query.toLowerCase();
-
-    const animeResults = MOCK_ANIMES.filter(a => 
-      a.title.toLowerCase().includes(q) || 
-      a.genres.some(g => g.toLowerCase().includes(q)) ||
-      a.studio.toLowerCase().includes(q)
-    ).map(a => ({ ...a, isAnime: true as const }));
-
-    const mangaResults = MOCK_MANGAS.filter(m => 
+    const localManga = MOCK_MANGAS.filter(m => 
       m.title.toLowerCase().includes(q) || 
       m.genres.some(g => g.toLowerCase().includes(q)) ||
       m.author.toLowerCase().includes(q)
     ).map(m => ({ ...m, isAnime: false as const }));
+    setMangaResults(localManga);
 
-    return [...animeResults, ...mangaResults];
-  };
+    // 2. Fetch API Anime Search
+    const performSearch = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetchSearchPaginated(query, { page: 1, limit: 30 });
+        setAnimeResults(response.items || []);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'Gagal mencari anime');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const allResults = getSearchResults();
+    performSearch();
+  }, [query]);
+
+  // Combine results
+  const formattedAnime = animeResults.map(a => ({ ...a, isAnime: true as const }));
+  const formattedManga = mangaResults;
+  const allResults = [...formattedAnime, ...formattedManga];
 
   // Filter based on Tab
-  const filteredResults = allResults.filter(r => {
-    if (activeTab === 'semua') return true;
-    if (activeTab === 'anime') return r.isAnime === true;
-    if (activeTab === 'manga') return r.isAnime === false;
-    return true;
-  });
+  const filteredResults = (() => {
+    if (activeTab === 'semua') return allResults;
+    if (activeTab === 'anime') return formattedAnime;
+    if (activeTab === 'manga') return formattedManga;
+    return allResults;
+  })();
 
-  // Featured Content (first match or highest rated)
-  const featuredItem = allResults.length > 0 
-    ? [...allResults].sort((a, b) => b.rating - a.rating)[0]
-    : null;
+  // Featured Content (highest rated)
+  const getFeaturedItem = () => {
+    const topAnime = animeResults[0];
+    const topManga = mangaResults[0];
+    
+    if (!topAnime && !topManga) return null;
+    if (topAnime && !topManga) {
+      return {
+        id: String(topAnime.id),
+        title: topAnime.nama_anime,
+        coverUrl: topAnime.gambar_anime,
+        posterUrl: topAnime.gambar_anime,
+        rating: topAnime.rating_anime ?? 0,
+        type: 'anime',
+        releaseDate: topAnime.tanggal_rilis_anime,
+        description: topAnime.sinopsis_anime,
+        slug: String(topAnime.id),
+        isAnime: true as const,
+        rawItem: topAnime
+      };
+    }
+    if (!topAnime && topManga) {
+      return {
+        id: topManga.id,
+        title: topManga.title,
+        coverUrl: topManga.coverUrl,
+        posterUrl: topManga.coverUrl,
+        rating: topManga.rating ?? 0,
+        type: topManga.type,
+        releaseDate: topManga.releaseDate,
+        description: topManga.description,
+        slug: topManga.slug,
+        isAnime: false as const,
+        rawItem: topManga
+      };
+    }
+    
+    // Both exist, compare rating
+    const animeRating = topAnime.rating_anime ?? 0;
+    const mangaRating = topManga.rating ?? 0;
+    if (animeRating >= mangaRating) {
+      return {
+        id: String(topAnime.id),
+        title: topAnime.nama_anime,
+        coverUrl: topAnime.gambar_anime,
+        posterUrl: topAnime.gambar_anime,
+        rating: animeRating,
+        type: 'anime',
+        releaseDate: topAnime.tanggal_rilis_anime,
+        description: topAnime.sinopsis_anime,
+        slug: String(topAnime.id),
+        isAnime: true as const,
+        rawItem: topAnime
+      };
+    } else {
+      return {
+        id: topManga.id,
+        title: topManga.title,
+        coverUrl: topManga.coverUrl,
+        posterUrl: topManga.coverUrl,
+        rating: mangaRating,
+        type: topManga.type,
+        releaseDate: topManga.releaseDate,
+        description: topManga.description,
+        slug: topManga.slug,
+        isAnime: false as const,
+        rawItem: topManga
+      };
+    }
+  };
 
+  const featuredItem = getFeaturedItem();
   const featuredBookmarked = featuredItem 
     ? isBookmarked(featuredItem.id, featuredItem.isAnime ? 'anime' : 'manga') 
     : false;
@@ -57,14 +148,40 @@ export const SearchPage: React.FC = () => {
   const handleFeaturedBookmarkToggle = () => {
     if (!featuredItem) return;
     const type = featuredItem.isAnime ? 'anime' : 'manga';
+    if (!isLoggedIn) {
+      addToast('info', 'Login dulu untuk menyimpan konten!');
+      return;
+    }
     if (featuredBookmarked) {
       removeBookmark(featuredItem.id, type);
       addToast('info', `Dihapus dari simpanan: ${featuredItem.title}`);
     } else {
-      addBookmark(featuredItem as any);
+      if (featuredItem.isAnime) {
+        const a = featuredItem.rawItem as ApiAnime;
+        const mappedAnime: Anime = {
+          id: String(a.id),
+          title: a.nama_anime,
+          slug: String(a.id),
+          description: a.sinopsis_anime ?? '',
+          type: 'anime',
+          status: (a.status_anime ?? '').toLowerCase().includes('ongoing') ? 'ongoing' : 'completed',
+          releaseDate: a.tanggal_rilis_anime ?? '',
+          studio: (a.studio_anime ?? []).join(', '),
+          rating: a.rating_anime ?? 0,
+          episodeCount: a.episodes_count ?? 0,
+          genres: a.genre_anime ?? [],
+          coverUrl: a.gambar_anime,
+          posterUrl: a.gambar_anime,
+        };
+        addBookmark(mappedAnime);
+      } else {
+        addBookmark(featuredItem.rawItem);
+      }
       addToast('success', `Disimpan ke daftar: ${featuredItem.title}`);
     }
   };
+
+  const totalResultsCount = animeResults.length + mangaResults.length;
 
   return (
     <div className="space-y-6 pb-16 text-left">
@@ -78,10 +195,19 @@ export const SearchPage: React.FC = () => {
       </div>
 
       <p className="text-xs text-text-secondary leading-none">
-        Menemukan {allResults.length} hasil kecocokan di database.
+        Menemukan {totalResultsCount} hasil kecocokan di database.
       </p>
 
-      {allResults.length > 0 ? (
+      {isLoading ? (
+        <div className="py-24 flex flex-col items-center justify-center">
+          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+          <p className="text-sm text-muted">Sedang mencari konten...</p>
+        </div>
+      ) : error ? (
+        <div className="py-12 text-center text-red-500 text-sm">
+          {error}
+        </div>
+      ) : allResults.length > 0 ? (
         <div className="space-y-8">
           
           {/* Category Tabs filter */}
@@ -114,7 +240,7 @@ export const SearchPage: React.FC = () => {
                 {/* Visual Thumbnail */}
                 <div className="w-32 sm:w-36 aspect-[2/3] bg-bg-base rounded-xl border border-border overflow-hidden shrink-0 shadow-lg">
                   <img
-                    src={featuredItem.isAnime ? (featuredItem as any).posterUrl : (featuredItem as any).coverUrl}
+                    src={featuredItem.coverUrl}
                     alt={featuredItem.title}
                     className="w-full h-full object-cover"
                   />
@@ -188,9 +314,9 @@ export const SearchPage: React.FC = () => {
                 {filteredResults.map((r) => (
                   <div key={r.id} className="animate-fade-in">
                     {r.isAnime ? (
-                      <AnimeCard anime={r as any} />
+                      <AnimeCard apiAnime={r as ApiAnime} />
                     ) : (
-                      <MangaCard manga={r as any} />
+                      <MangaCard manga={r} />
                     )}
                   </div>
                 ))}

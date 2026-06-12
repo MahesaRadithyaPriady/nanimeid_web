@@ -1,26 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Tv, LayoutGrid, LayoutList } from 'lucide-react';
-import { MOCK_ANIMES } from '../constants/mockData';
+import { Tv, LayoutGrid, LayoutList, Loader2 } from 'lucide-react';
 import { AnimeCard } from '../components/cards/AnimeCard';
+import type { ApiAnimeLatest } from '../types';
+import { fetchAnimeLatest } from '../lib/animeApi';
 
 export const AnimePage: React.FC = () => {
-  // Save viewMode preference to localStorage
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     return (localStorage.getItem('anime-view-mode') as 'grid' | 'list') || 'grid';
   });
-  const [visibleCount, setVisibleCount] = useState(12);
+
+  const [animeResults, setAnimeResults] = useState<ApiAnimeLatest[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const limit = 24;
 
   const handleToggleViewMode = (mode: 'grid' | 'list') => {
     setViewMode(mode);
     localStorage.setItem('anime-view-mode', mode);
   };
 
-  // Sort: Latest ID/Release first
-  const animeResults = [...MOCK_ANIMES].sort((a, b) => b.id.localeCompare(a.id));
+  // Fetch initial page
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetchAnimeLatest({ page: 1, limit });
+        if (!cancelled) {
+          setAnimeResults(res.items ?? []);
+          setTotalPages(res.totalPages ?? 1);
+          setPage(1);
+        }
+      } catch (err) {
+        console.error('AnimePage fetch error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
-  const loadMore = () => {
-    setVisibleCount(prev => prev + 12);
+  const loadMore = async () => {
+    if (loadingMore || page >= totalPages) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await fetchAnimeLatest({ page: nextPage, limit });
+      setAnimeResults(prev => [...prev, ...(res.items ?? [])]);
+      setPage(nextPage);
+      setTotalPages(res.totalPages ?? totalPages);
+    } catch (err) {
+      console.error('AnimePage loadMore error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   return (
@@ -45,10 +83,12 @@ export const AnimePage: React.FC = () => {
       <div className="flex items-center justify-between border-b border-border/30 pb-3">
         <div className="text-left">
           <h2 className="text-sm font-bold text-text-primary font-heading">Terbaru</h2>
-          <p className="text-xs text-muted mt-0.5">Menampilkan {animeResults.length} konten rilis terbaru</p>
+          <p className="text-xs text-muted mt-0.5">
+            {loading ? 'Memuat...' : `Menampilkan ${animeResults.length} konten rilis terbaru`}
+          </p>
         </div>
 
-        {/* Grid/List Toggle (YouTube style) */}
+        {/* Grid/List Toggle */}
         <div className="flex items-center gap-1 bg-bg-surface border border-border/60 p-1 rounded-xl">
           <button
             onClick={() => handleToggleViewMode('grid')}
@@ -72,51 +112,52 @@ export const AnimePage: React.FC = () => {
       </div>
 
       {/* 3. Feed Viewport */}
-      {animeResults.length > 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : animeResults.length > 0 ? (
         viewMode === 'grid' ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
-            {animeResults.slice(0, visibleCount).map((anime) => (
+            {animeResults.map((anime) => (
               <div key={anime.id} className="animate-fade-in">
-                <AnimeCard anime={anime} />
+                <AnimeCard apiAnime={anime} />
               </div>
             ))}
           </div>
         ) : (
-          // YouTube Search Results List View
           <div className="flex flex-col gap-4">
-            {animeResults.slice(0, visibleCount).map((anime) => (
+            {animeResults.map((anime) => (
               <Link 
                 key={anime.id}
-                to={`/anime/${anime.slug}`}
+                to={`/anime/${anime.id}`}
                 className="group flex flex-col sm:flex-row gap-4 p-3 bg-bg-surface/30 hover:bg-bg-surface border border-border/40 hover:border-primary/20 rounded-2xl transition-all duration-200"
               >
-                {/* Widescreen Thumbnail Left */}
                 <div className="relative w-full sm:w-48 md:w-56 aspect-[16/9] bg-bg-base rounded-xl overflow-hidden shrink-0 shadow-sm border border-border/20">
-                  <img src={anime.coverUrl} alt={anime.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                  <img src={anime.gambar_anime} alt={anime.nama_anime} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-bold text-white uppercase">
-                    {anime.status === 'ongoing' ? `Ep ${anime.episodeCount}` : 'Tamat'}
+                    {anime.last_episode ? `Ep ${anime.last_episode.nomor_episode}` : `${anime.episodes_count ?? 0} Ep`}
                   </span>
                   <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-bold text-yellow-400 flex items-center gap-0.5">
-                    ★ {anime.rating.toFixed(1)}
+                    ★ {(anime.rating_anime ?? 0).toFixed(1)}
                   </span>
                 </div>
 
-                {/* Metadata Right */}
                 <div className="flex-1 min-w-0 flex flex-col justify-start text-left space-y-2 py-1">
                   <h3 className="text-base md:text-lg font-bold text-text-primary group-hover:text-primary transition-colors duration-150 line-clamp-1 leading-snug">
-                    {anime.title}
+                    {anime.nama_anime}
                   </h3>
                   
                   <p className="text-xs md:text-sm text-text-secondary line-clamp-2 leading-relaxed">
-                    {anime.description}
+                    {anime.sinopsis_anime}
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted font-medium pt-1">
-                    <span className="font-mono text-[10px] uppercase text-primary-light">{anime.genres[0]}</span>
+                    <span className="font-mono text-[10px] uppercase text-primary-light">{(anime.genre_anime ?? [])[0]}</span>
                     <span className="text-border/60">&bull;</span>
-                    <span>Studio: {anime.studio}</span>
+                    <span>Studio: {(anime.studio_anime ?? []).join(', ')}</span>
                     <span className="text-border/60">&bull;</span>
-                    <span>{anime.releaseDate}</span>
+                    <span>{anime.status_anime}</span>
                   </div>
                 </div>
               </Link>
@@ -129,14 +170,16 @@ export const AnimePage: React.FC = () => {
         </div>
       )}
 
-      {/* 4. Global Load More Trigger */}
-      {animeResults.length > visibleCount && (
+      {/* 4. Load More */}
+      {page < totalPages && !loading && (
         <div className="flex justify-center mt-10">
           <button
             onClick={loadMore}
-            className="px-6 py-3 bg-bg-surface border border-border hover:border-primary text-text-primary hover:text-primary font-semibold text-sm rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
+            disabled={loadingMore}
+            className="px-6 py-3 bg-bg-surface border border-border hover:border-primary text-text-primary hover:text-primary font-semibold text-sm rounded-xl transition-all hover:scale-[1.02] active:scale-95 shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            Muat Lebih Banyak
+            {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loadingMore ? 'Memuat...' : 'Muat Lebih Banyak'}
           </button>
         </div>
       )}

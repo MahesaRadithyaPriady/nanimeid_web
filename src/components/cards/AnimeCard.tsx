@@ -1,50 +1,128 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, Bookmark, BookmarkCheck, Star } from 'lucide-react';
-import type { Anime } from '../../types';
+import type { Anime, ApiAnime } from '../../types';
 import { useAppStore } from '../../stores/useAppStore';
 import { Badge } from '../ui/Badge';
 
 interface AnimeCardProps {
-  anime: Anime;
+  /** Legacy mock anime object */
+  anime?: Anime;
+  /** Backend API anime object */
+  apiAnime?: ApiAnime;
 }
 
-export const AnimeCard: React.FC<AnimeCardProps> = ({ anime }) => {
+/** Normalise either source into a uniform shape for rendering */
+function useNormalized(props: AnimeCardProps) {
+  if (props.apiAnime) {
+    const a = props.apiAnime;
+    return {
+      id: String(a.id),
+      numericId: a.id,
+      title: a.nama_anime,
+      posterUrl: a.gambar_anime,
+      coverUrl: a.gambar_anime,
+      rating: a.rating_anime ?? 0,
+      status: (a.status_anime ?? '').toLowerCase() as 'ongoing' | 'completed' | 'upcoming',
+      statusRaw: a.status_anime ?? '',
+      genres: a.genre_anime ?? [],
+      studio: (a.studio_anime ?? []).join(', ') || '-',
+      episodeCount: a.episodes_count ?? 0,
+      releaseDate: a.tanggal_rilis_anime ?? '',
+      description: a.sinopsis_anime ?? '',
+      viewCount: a.view_anime,
+      slug: String(a.id), // use id as slug for route
+      isApi: true as const,
+    };
+  }
+  const a = props.anime!;
+  return {
+    id: a.id,
+    numericId: undefined as number | undefined,
+    title: a.title,
+    posterUrl: a.posterUrl,
+    coverUrl: a.coverUrl,
+    rating: a.rating,
+    status: a.status,
+    statusRaw: a.status,
+    genres: a.genres,
+    studio: a.studio,
+    episodeCount: a.episodeCount,
+    releaseDate: a.releaseDate,
+    description: a.description,
+    viewCount: undefined as string | number | undefined,
+    slug: a.slug,
+    isApi: false as const,
+  };
+}
+
+export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
   const navigate = useNavigate();
-  const { addBookmark, removeBookmark, isBookmarked, addToast, watchHistory } = useAppStore();
-  const bookmarked = isBookmarked(anime.id, 'anime');
+  const { addBookmark, removeBookmark, isBookmarked, addToast, watchHistory, isLoggedIn } = useAppStore();
+  const n = useNormalized(props);
+
+  const bookmarked = isBookmarked(n.id, 'anime');
 
   // Find latest progress of this anime in watch history
   const histForAnime = watchHistory
-    .filter((h) => h.animeId === anime.id)
+    .filter((h) => h.animeId === n.id)
     .sort((a, b) => b.watchedAt - a.watchedAt)[0];
   const watchProgress = histForAnime ? histForAnime.progress : 0;
 
   const handleBookmarkToggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isLoggedIn) {
+      addToast('info', 'Login dulu untuk menyimpan konten!');
+      return;
+    }
     if (bookmarked) {
-      removeBookmark(anime.id, 'anime');
-      addToast('info', `Dihapus dari simpanan: ${anime.title}`);
+      removeBookmark(n.id, 'anime');
+      addToast('info', `Dihapus dari simpanan: ${n.title}`);
     } else {
-      addBookmark(anime);
-      addToast('success', `Disimpan ke daftar: ${anime.title}`);
+      if (props.apiAnime) {
+        const a = props.apiAnime;
+        const mappedAnime: Anime = {
+          id: String(a.id),
+          title: a.nama_anime,
+          slug: String(a.id),
+          description: a.sinopsis_anime ?? '',
+          type: 'anime',
+          status: (a.status_anime ?? '').toLowerCase().includes('ongoing') ? 'ongoing' : 'completed',
+          releaseDate: a.tanggal_rilis_anime ?? '',
+          studio: (a.studio_anime ?? []).join(', '),
+          rating: a.rating_anime ?? 0,
+          episodeCount: a.episodes_count ?? 0,
+          genres: a.genre_anime ?? [],
+          coverUrl: a.gambar_anime,
+          posterUrl: a.gambar_anime,
+        };
+        addBookmark(mappedAnime);
+      } else if (props.anime) {
+        addBookmark(props.anime);
+      }
+      addToast('success', `Disimpan ke daftar: ${n.title}`);
     }
   };
 
   const handleQuickPlay = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate(`/watch/${anime.slug}/ep/1`);
-    addToast('info', `Memutar ${anime.title} Episode 1`);
+    navigate(`/watch/${n.slug}/ep/1`);
+    addToast('info', `Memutar ${n.title} Episode 1`);
   };
+
+  const statusNorm = n.statusRaw.toLowerCase();
+  const statusVariant = statusNorm.includes('ongoing') ? 'ongoing'
+    : statusNorm.includes('upcoming') ? 'upcoming'
+    : 'completed';
 
   return (
     <Link 
-      to={`/anime/${anime.slug}`}
+      to={`/anime/${n.slug}`}
       className="group flex flex-col w-full text-left focus:outline-none"
     >
-      {/* Poster Container (YouTube Thumbnail) */}
+      {/* Poster Container */}
       <div className="relative w-full aspect-[2/3] bg-bg-surface rounded-2xl overflow-hidden border border-border/40 transition-all duration-250 ease-out group-hover:scale-[1.02] group-hover:shadow-glow group-hover:border-primary/30">
         
         {/* Shimmer Placeholder Background */}
@@ -52,8 +130,8 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime }) => {
 
         {/* Poster Image */}
         <img
-          src={anime.posterUrl}
-          alt={anime.title}
+          src={n.posterUrl}
+          alt={n.title}
           loading="lazy"
           decoding="async"
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
@@ -66,17 +144,17 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime }) => {
         <div className="absolute top-2.5 left-2.5 z-20 flex flex-wrap gap-1.5">
           <Badge variant="rating" className="flex items-center gap-1 bg-black/60 backdrop-blur-md border border-white/10 font-bold px-2 py-0.5 text-[10px]">
             <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-            <span>{anime.rating.toFixed(1)}</span>
+            <span>{n.rating.toFixed(1)}</span>
           </Badge>
           <Badge 
-            variant={anime.status === 'ongoing' ? 'ongoing' : anime.status === 'upcoming' ? 'upcoming' : 'completed'} 
+            variant={statusVariant} 
             className="bg-black/60 backdrop-blur-md border border-white/10 uppercase text-[9px] font-bold px-2 py-0.5"
           >
-            {anime.status}
+            {n.statusRaw}
           </Badge>
         </div>
 
-        {/* Top-Right Quick Bookmark Overlay (YouTube-like hover save action) */}
+        {/* Top-Right Quick Bookmark Overlay */}
         <button
           onClick={handleBookmarkToggle}
           className={`absolute top-2.5 right-2.5 z-20 p-2 bg-black/70 backdrop-blur-sm text-text-primary rounded-full hover:bg-black/95 hover:text-primary transition-all active:scale-90 shadow-md ${
@@ -91,14 +169,14 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime }) => {
           )}
         </button>
 
-        {/* Bottom-Right Episode Badge (YouTube Timestamp placement) */}
+        {/* Bottom-Right Episode Badge */}
         <div className="absolute bottom-2.5 right-2.5 z-20">
           <Badge variant="episode" className="bg-black/85 backdrop-blur-sm border border-white/5 font-bold px-2 py-0.5 rounded text-[10px]">
-            {anime.status === 'ongoing' ? `Ep ${anime.episodeCount}` : 'Tamat'}
+            {statusNorm.includes('ongoing') ? `Ep ${n.episodeCount}` : statusNorm.includes('upcoming') ? 'Segera' : 'Tamat'}
           </Badge>
         </div>
 
-        {/* Watch Progress Bar Overlay at bottom of thumbnail */}
+        {/* Watch Progress Bar */}
         {watchProgress > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40 z-20">
             <div 
@@ -123,16 +201,20 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({ anime }) => {
       {/* Metadata Row */}
       <div className="mt-3 px-0.5">
         <h4 className="text-sm font-bold font-sans text-text-primary group-hover:text-primary transition-colors duration-150 line-clamp-2 leading-snug">
-          {anime.title}
+          {n.title}
         </h4>
         
         {/* Stats & Genres */}
         <div className="mt-1.5 flex items-center flex-wrap gap-1 text-[11px] text-muted font-medium">
-          <span className="font-mono text-[10px]">{anime.genres[0]}</span>
+          <span className="font-mono text-[10px]">{n.genres[0] ?? ''}</span>
           <span className="text-border/60">•</span>
-          <span>★ {anime.rating.toFixed(1)}</span>
-          <span className="text-border/60">•</span>
-          <span>{anime.releaseDate}</span>
+          <span>★ {n.rating.toFixed(1)}</span>
+          {n.viewCount !== undefined && (
+            <>
+              <span className="text-border/60">•</span>
+              <span>{n.viewCount} views</span>
+            </>
+          )}
         </div>
       </div>
     </Link>

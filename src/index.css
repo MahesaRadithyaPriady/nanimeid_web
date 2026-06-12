@@ -74,11 +74,11 @@
 .player-progress-slider {
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(to right, #ff66cd var(--value-percent, 0%), rgba(255, 255, 255, 0.2) var(--value-percent, 0%));
   height: 4px;
   border-radius: 2px;
   outline: none;
-  transition: height 0.1s ease;
+  transition: height 0.15s ease;
 }
 
 .player-progress-slider:hover {
@@ -88,12 +88,66 @@
 .player-progress-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 0px;
+  height: 0px;
   border-radius: 50%;
   background: #ff66cd;
   cursor: pointer;
   box-shadow: 0 0 10px rgba(255, 102, 205, 0.8);
+  transition: width 0.15s ease, height 0.15s ease;
+}
+
+.player-progress-slider:hover::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+}
+
+.player-progress-slider::-moz-range-thumb {
+  width: 0px;
+  height: 0px;
+  border: none;
+  border-radius: 50%;
+  background: #ff66cd;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(255, 102, 205, 0.8);
+  transition: width 0.15s ease, height 0.15s ease;
+}
+
+.player-progress-slider:hover::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+}
+
+/* Custom styles for video player volume slider */
+.player-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(to right, #ff66cd var(--volume-percent, 50%), rgba(255, 255, 255, 0.2) var(--volume-percent, 50%));
+  height: 3px;
+  border-radius: 1.5px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.player-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff66cd;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(255, 102, 205, 0.6);
+}
+
+.player-volume-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: #ff66cd;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(255, 102, 205, 0.6);
 }
 
 /* Prefers Reduced Motion */
