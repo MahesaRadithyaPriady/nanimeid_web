@@ -30,6 +30,7 @@ export interface UserProfile {
   isVip?: boolean;
   level?: number;
   xp?: number;
+  coins?: number;
   minutesWatched?: number;
   likes?: number;
   commentsCount?: number;

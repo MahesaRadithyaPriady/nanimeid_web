@@ -188,7 +188,7 @@ export async function fetchAnimeList(opts?: {
     page: opts?.page,
     limit: opts?.limit,
     type: opts?.type,
-    content_type: opts?.contentType,
+    contentType: opts?.contentType,
     sortBy: opts?.sortBy,
     order: opts?.order,
   });
@@ -203,11 +203,13 @@ export async function fetchAnimeLatest(opts?: {
   page?: number;
   limit?: number;
   type?: string;
+  contentType?: string;
 }): Promise<AnimeLatestResponse> {
   const res = await get<AnimeLatestResponse>('/anime/latest', {
     page: opts?.page,
     limit: opts?.limit,
     type: opts?.type,
+    contentType: opts?.contentType,
   });
   if (res.items) {
     res.items = res.items.map(cleanAnime);
@@ -220,11 +222,13 @@ export async function fetchAnimeByView(opts?: {
   page?: number;
   limit?: number;
   type?: string;
+  contentType?: string;
 }): Promise<AnimeViewResponse> {
   const res = await get<AnimeViewResponse>('/anime/view', {
     page: opts?.page,
     limit: opts?.limit,
     type: opts?.type,
+    contentType: opts?.contentType,
   });
   if (res.items) {
     res.items = res.items.map(cleanAnime);
@@ -252,16 +256,24 @@ export async function fetchAnimeSchedule(opts?: {
   });
 }
 
-/** GET /anime/recommendations — personalized or popular */
+/** 
+ * GET /anime/recommendations — personalized or popular
+ * @param opts.type - filter content_type: ANIME|FILM|DONGHUA|ALL (default: ANIME)
+ * @param opts.limit - default 20, max 100
+ * @param opts.page - optional, converted to offset
+ * @param opts.offset - optional, priority over page
+ */
 export async function fetchAnimeRecommendations(opts?: {
   limit?: number;
   type?: string;
   page?: number;
+  offset?: number;
 }): Promise<AnimeRecommendationsResponse> {
   const res = await get<AnimeRecommendationsResponse>('/anime/recommendations', {
     limit: opts?.limit,
     type: opts?.type,
     page: opts?.page,
+    offset: opts?.offset,
   });
   if (res.data) {
     res.data = res.data.map(cleanAnime);
@@ -269,15 +281,23 @@ export async function fetchAnimeRecommendations(opts?: {
   return res;
 }
 
-/** GET /anime/recommendations/similar — ML-based similar anime */
+/** 
+ * GET /anime/recommendations/similar — ML-based similar anime
+ * @param animeId - ID of the source anime
+ * @param opts.limit - default 20, max 100
+ * @param opts.page - optional, converted to offset
+ * @param opts.offset - optional, priority over page
+ */
 export async function fetchSimilarAnime(animeId: number | string, opts?: {
   limit?: number;
   page?: number;
+  offset?: number;
 }): Promise<SimilarAnimeResponse> {
   const res = await get<SimilarAnimeResponse>('/anime/recommendations/similar', {
     anime_id: Number(animeId),
     limit: opts?.limit,
     page: opts?.page,
+    offset: opts?.offset,
   });
   if (res.data) {
     res.data = res.data.map(cleanAnime);
@@ -619,5 +639,31 @@ export async function purchaseSticker(itemId: number, code?: string): Promise<Pu
     sticker_id: itemId,
     code: code
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* Favorites API                                                       */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+export async function checkAnimeFavoriteStatus(animeId: number | string): Promise<{ status: number; message: string; isFavorited: boolean }> {
+  return get<{ status: number; message: string; isFavorited: boolean }>(`/favorites/anime/${animeId}/favorite/status`);
+}
+
+export async function addAnimeToFavorite(animeId: number | string): Promise<{ status: number; message: string }> {
+  return sendRequest<{ status: number; message: string }>('POST', `/favorites/anime/${animeId}/favorite`);
+}
+
+export async function removeAnimeFromFavorite(animeId: number | string): Promise<{ status: number; message: string }> {
+  return sendRequest<{ status: number; message: string }>('DELETE', `/favorites/anime/${animeId}/favorite`);
+}
+
+export async function fetchFavoriteAnimes(opts?: { status?: string }): Promise<{ status: number; message: string; items: any[], filter?: any }> {
+  return get<{ status: number; message: string; items: any[], filter?: any }>('/favorites/me/favorites/anime', {
+    status: opts?.status
+  });
+}
+
+export async function fetchFavoriteEpisodes(): Promise<{ status: number; message: string; items: any[] }> {
+  return get<{ status: number; message: string; items: any[] }>('/favorites/me/favorites/episodes');
 }
 

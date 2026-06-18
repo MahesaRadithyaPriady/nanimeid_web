@@ -2,7 +2,8 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { 
   ChevronRight, ChevronLeft, Flame, Sparkles, BookOpen, 
-  Play, Star, Tv, Clock, TrendingUp, ArrowRight, Loader2
+  Play, Star, Tv, Clock, TrendingUp, ArrowRight, Loader2,
+  Trophy, Crown
 } from 'lucide-react';
 import { HeroBanner } from '../components/sections/HeroBanner';
 import { AnimeCard } from '../components/cards/AnimeCard';
@@ -10,6 +11,9 @@ import { Badge } from '../components/ui/Badge';
 import { useAppStore } from '../stores/useAppStore';
 import type { ApiAnime, ApiAnimeLatest } from '../types';
 import { fetchAnimeByView, fetchAnimeLatest, fetchAnimeRecommendations, fetchAnimeList } from '../lib/animeApi';
+import { getLeaderboard } from '../lib/leaderboardApi';
+import type { LeaderboardEntry } from '../lib/leaderboardApi';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 /* ─── Skeleton loader for cards ────────────────────────────────────── */
 const CardSkeleton: React.FC = () => (
@@ -33,6 +37,33 @@ export const HomePage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<ApiAnime[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /* ── Leaderboard states ── */
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+
+  // Fetch Leaderboard Preview
+  useEffect(() => {
+    let active = true;
+    async function loadLeaderboard() {
+      setLoadingLeaderboard(true);
+      try {
+        const res = await getLeaderboard(leaderboardPeriod, 1, 5);
+        if (!active) return;
+        setLeaderboardEntries(res.data?.entries || []);
+      } catch (err) {
+        console.error('Failed to fetch leaderboard:', err);
+        if (!active) return;
+        // Fallback mock data
+        setLeaderboardEntries([]);
+      } finally {
+        if (active) setLoadingLeaderboard(false);
+      }
+    }
+    loadLeaderboard();
+    return () => { active = false; };
+  }, [leaderboardPeriod]);
+
   /* ── Category Explore Section states ── */
   const [selectedCategory, setSelectedCategory] = useState<'semua' | 'ANIME' | 'DONGHUA' | 'FILM'>('semua');
   const [categoryItems, setCategoryItems] = useState<ApiAnime[]>([]);
@@ -49,9 +80,9 @@ export const HomePage: React.FC = () => {
       setLoading(true);
       try {
         const [viewRes, latestRes, recsRes] = await Promise.allSettled([
-          fetchAnimeByView({ limit: 20, type: 'ANIME' }),
-          fetchAnimeLatest({ limit: 6, type: 'ANIME' }),
-          fetchAnimeRecommendations({ limit: 10, type: 'ANIME' }),
+          fetchAnimeByView({ limit: 30, type: 'ANIME' }),
+          fetchAnimeLatest({ limit: 10, type: 'ANIME' }),
+          fetchAnimeRecommendations({ limit: 12, type: 'ANIME' }),
         ]);
 
         if (cancelled) return;
@@ -84,7 +115,7 @@ export const HomePage: React.FC = () => {
         const contentType = selectedCategory === 'semua' ? undefined : selectedCategory;
         const res = await fetchAnimeList({
           page: categoryPage,
-          limit: 12,
+          limit: 24,
           contentType,
           sortBy: 'id',
           order: 'desc'
@@ -99,7 +130,7 @@ export const HomePage: React.FC = () => {
           setCategoryItems(prev => [...prev, ...items]);
         }
 
-        if (items.length < 12) {
+        if (items.length < 24) {
           setHasMoreCategory(false);
         } else {
           setHasMoreCategory(true);
@@ -363,6 +394,230 @@ export const HomePage: React.FC = () => {
 
 
       {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* LEADERBOARD PREVIEW                                           */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <div className="bg-bg-surface/40 border border-border/30 rounded-2xl p-5 sm:p-6 text-left backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex gap-3 items-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-yellow-500/20 to-amber-500/20 flex items-center justify-center shrink-0">
+              <Trophy className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div>
+              <h2 className="text-base md:text-lg font-bold font-heading text-text-primary tracking-tight leading-tight">
+                Leaderboard Penonton
+              </h2>
+              <span className="text-[11px] text-muted font-medium">Pengguna teraktif dengan perolehan XP terbanyak</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between sm:justify-end gap-3">
+            <div className="flex bg-bg-elevated/50 p-1 rounded-xl border border-border/40">
+              {(['daily', 'weekly', 'monthly'] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setLeaderboardPeriod(period)}
+                  className={`px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all ${
+                    leaderboardPeriod === period
+                      ? 'bg-primary text-black shadow-glow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {period === 'daily' ? 'Harian' : period === 'weekly' ? 'Mingguan' : 'Bulanan'}
+                </button>
+              ))}
+            </div>
+
+            <RouterLink
+              to="/leaderboard"
+              className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary-light transition-colors shrink-0"
+            >
+              <span>Selengkapnya</span>
+              <ChevronRight className="w-4.5 h-4.5" />
+            </RouterLink>
+          </div>
+        </div>
+
+        {loadingLeaderboard ? (
+          <div className="py-12 flex flex-col items-center justify-center">
+            <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
+            <p className="text-xs text-muted">Memuat data peringkat...</p>
+          </div>
+        ) : leaderboardEntries.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Podium Top 3 (col-span 7) */}
+            <div className="lg:col-span-7 flex flex-col items-center pt-16 pb-4 bg-bg-base/30 rounded-2xl border border-border/20">
+              <div className="flex items-end justify-center w-full max-w-md px-4 mt-2 h-64 select-none">
+                {/* 2nd Place */}
+                {leaderboardEntries[1] && (
+                  <div className="flex flex-col items-center w-1/3">
+                    <div className="relative group flex flex-col items-center">
+                      <div className="absolute -top-7 text-text-secondary/70 font-black text-xs font-heading">#2</div>
+                      <div className="relative flex items-center justify-center shrink-0">
+                        <UserAvatar
+                          src={leaderboardEntries[1].user.avatarUrl}
+                          name={leaderboardEntries[1].user.fullName || leaderboardEntries[1].user.username}
+                          className="w-14 h-14 rounded-full border-2 border-slate-400 shadow-lg group-hover:scale-105 transition-all"
+                        />
+                        {leaderboardEntries[1].user.activeAvatarBorder && (
+                          <img
+                            src={leaderboardEntries[1].user.activeAvatarBorder.imageUrl}
+                            alt="Border"
+                            className="absolute -inset-[15%] w-[130%] h-[130%] max-w-none pointer-events-none z-20"
+                          />
+                        )}
+                      </div>
+                      <span className="text-slate-400 mt-2 font-bold text-xs truncate max-w-[80px]">
+                        {leaderboardEntries[1].user.fullName || leaderboardEntries[1].user.username}
+                      </span>
+                      <span className="text-[10px] text-muted font-semibold mt-0.5">
+                        {leaderboardEntries[1].total_xp} XP
+                      </span>
+                    </div>
+                    {/* Pedestal */}
+                    <div className="w-full bg-gradient-to-t from-slate-500/25 to-slate-500/5 border-t border-slate-500/30 rounded-t-xl h-16 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-2xl font-black text-slate-400 font-heading">2</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1st Place */}
+                {leaderboardEntries[0] && (
+                  <div className="flex flex-col items-center w-1/3 z-10 -mx-1">
+                    <div className="relative group flex flex-col items-center">
+                      <Crown className="absolute -top-8 w-6 h-6 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)] animate-bounce" />
+                      <div className="relative flex items-center justify-center shrink-0">
+                        <UserAvatar
+                          src={leaderboardEntries[0].user.avatarUrl}
+                          name={leaderboardEntries[0].user.fullName || leaderboardEntries[0].user.username}
+                          className="w-18 h-18 rounded-full border-4 border-yellow-400 shadow-glow-sm group-hover:scale-105 transition-all"
+                        />
+                        {leaderboardEntries[0].user.activeAvatarBorder && (
+                          <img
+                            src={leaderboardEntries[0].user.activeAvatarBorder.imageUrl}
+                            alt="Border"
+                            className="absolute -inset-[15%] w-[130%] h-[130%] max-w-none pointer-events-none z-20"
+                          />
+                        )}
+                      </div>
+                      <span className="text-yellow-400 mt-2 font-black text-sm truncate max-w-[95px] drop-shadow-[0_0_4px_rgba(250,204,21,0.2)]">
+                        {leaderboardEntries[0].user.fullName || leaderboardEntries[0].user.username}
+                      </span>
+                      <span className="text-xs text-yellow-300 font-extrabold mt-0.5">
+                        {leaderboardEntries[0].total_xp} XP
+                      </span>
+                    </div>
+                    {/* Pedestal */}
+                    <div className="w-full bg-gradient-to-t from-yellow-500/25 to-yellow-500/5 border-t border-yellow-500/30 rounded-t-xl h-24 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-3xl font-black text-yellow-400 font-heading">1</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3rd Place */}
+                {leaderboardEntries[2] && (
+                  <div className="flex flex-col items-center w-1/3">
+                    <div className="relative group flex flex-col items-center">
+                      <div className="absolute -top-7 text-text-secondary/70 font-black text-xs font-heading">#3</div>
+                      <div className="relative flex items-center justify-center shrink-0">
+                        <UserAvatar
+                          src={leaderboardEntries[2].user.avatarUrl}
+                          name={leaderboardEntries[2].user.fullName || leaderboardEntries[2].user.username}
+                          className="w-12 h-12 rounded-full border border-amber-600 shadow-lg group-hover:scale-105 transition-all"
+                        />
+                        {leaderboardEntries[2].user.activeAvatarBorder && (
+                          <img
+                            src={leaderboardEntries[2].user.activeAvatarBorder.imageUrl}
+                            alt="Border"
+                            className="absolute -inset-[15%] w-[130%] h-[130%] max-w-none pointer-events-none z-20"
+                          />
+                        )}
+                      </div>
+                      <span className="text-amber-600 mt-2 font-bold text-xs truncate max-w-[80px]">
+                        {leaderboardEntries[2].user.fullName || leaderboardEntries[2].user.username}
+                      </span>
+                      <span className="text-[10px] text-muted font-semibold mt-0.5">
+                        {leaderboardEntries[2].total_xp} XP
+                      </span>
+                    </div>
+                    {/* Pedestal */}
+                    <div className="w-full bg-gradient-to-t from-amber-700/25 to-amber-700/5 border-t border-amber-700/30 rounded-t-xl h-12 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-xl font-black text-amber-600 font-heading">3</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* List View for Ranks 4-5 (col-span 5) */}
+            <div className="lg:col-span-5 space-y-3">
+              <span className="text-xs font-bold text-muted uppercase tracking-wider block mb-2 px-1">
+                Peringkat Lainnya
+              </span>
+              {leaderboardEntries.slice(3, 5).map((entry) => (
+                <div
+                  key={entry.user.id}
+                  className="flex items-center justify-between p-3.5 bg-bg-base/35 border border-border/30 hover:border-primary/10 rounded-xl transition-all hover:translate-x-1"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <span className="w-6 text-sm font-black font-heading text-text-secondary text-center">
+                      {entry.rank}
+                    </span>
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <UserAvatar
+                        src={entry.user.avatarUrl}
+                        name={entry.user.fullName || entry.user.username}
+                        className="w-9 h-9 rounded-full"
+                      />
+                      {entry.user.activeAvatarBorder && (
+                        <img
+                          src={entry.user.activeAvatarBorder.imageUrl}
+                          alt="Border"
+                          className="absolute -inset-[15%] w-[130%] h-[130%] max-w-none pointer-events-none z-20"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-text-primary truncate block max-w-[120px] sm:max-w-none">
+                          {entry.user.fullName || entry.user.username}
+                        </span>
+                        {entry.user.vip && entry.user.vip.status === 'ACTIVE' && (
+                          <span className="px-1.5 py-0.5 text-[8px] font-black rounded bg-gradient-to-r from-yellow-500 to-amber-600 text-black uppercase tracking-wider scale-90">
+                            VIP
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted font-medium truncate block">
+                        @{entry.user.username}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs font-mono font-bold text-primary">
+                      {entry.total_xp}
+                    </span>
+                    <span className="text-[9px] text-muted block font-semibold uppercase">
+                      XP
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {leaderboardEntries.length < 4 && (
+                <div className="py-8 text-center text-xs text-muted border border-dashed border-border/40 rounded-xl">
+                  Selesaikan misi menonton untuk menempati peringkat teratas!
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="py-16 text-center border border-dashed border-border/60 rounded-2xl bg-bg-surface/20">
+            <p className="text-sm text-muted font-medium">Belum ada aktivitas di periode ini.</p>
+          </div>
+        )}
+      </div>
+
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
       {/* 5. NEW RELEASES — 2x2 Landscape cards grid                    */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div>
@@ -388,7 +643,7 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {newReleases.slice(0, 4).map((anime) => (
+            {newReleases.slice(0, 6).map((anime) => (
               <RouterLink
                 key={anime.id}
                 to={`/anime/${anime.id}`}

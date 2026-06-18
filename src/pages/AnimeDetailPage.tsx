@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Play, Star, Search, ArrowUpDown, Share2, ArrowLeft, Loader2 } from 'lucide-react';
+import { Play, Star, Search, ArrowUpDown, Share2, ArrowLeft, Loader2, Heart } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
 import { Badge } from '../components/ui/Badge';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { EpisodeCard } from '../components/cards/EpisodeCard';
 import type { ApiAnime, ApiEpisode } from '../types';
-import { fetchAnimeDetail, fetchSimilarAnime } from '../lib/animeApi';
+import { fetchAnimeDetail, fetchSimilarAnime, checkAnimeFavoriteStatus, addAnimeToFavorite, removeAnimeFromFavorite } from '../lib/animeApi';
 
 export const AnimeDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { addToast, watchHistory } = useAppStore();
+  const { addToast, watchHistory, isLoggedIn } = useAppStore();
 
   const [epSearch, setEpSearch] = useState('');
   const [epSortOrder, setEpSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -24,6 +24,17 @@ export const AnimeDetailPage: React.FC = () => {
   const [relatedAnimes, setRelatedAnimes] = useState<ApiAnime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* ── Favorite State ── */
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [isFavLoading, setIsFavLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id || !isLoggedIn) return;
+    checkAnimeFavoriteStatus(id)
+      .then(res => setIsFavorited(res.isFavorited))
+      .catch(err => console.error('Failed to fetch favorite status:', err));
+  }, [id, isLoggedIn]);
 
   useEffect(() => {
     if (!id) return;
@@ -81,6 +92,31 @@ export const AnimeDetailPage: React.FC = () => {
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     addToast('success', 'Tautan halaman berhasil disalin!');
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!isLoggedIn) {
+      navigate('/login', { state: { from: location.pathname } });
+      return;
+    }
+    if (!id) return;
+
+    setIsFavLoading(true);
+    try {
+      if (isFavorited) {
+        await removeAnimeFromFavorite(id);
+        setIsFavorited(false);
+        addToast('success', 'Dihapus dari favorit anime');
+      } else {
+        await addAnimeToFavorite(id);
+        setIsFavorited(true);
+        addToast('success', 'Ditambahkan ke favorit anime');
+      }
+    } catch (err: any) {
+      addToast('error', err.message || 'Gagal mengubah status favorit');
+    } finally {
+      setIsFavLoading(false);
+    }
   };
 
   // Filter episodes
@@ -231,6 +267,24 @@ export const AnimeDetailPage: React.FC = () => {
                   <span>Segera Hadir</span>
                 </button>
               )}
+
+              <button
+                onClick={handleToggleFavorite}
+                disabled={isFavLoading}
+                className={`p-3 border rounded-xl transition-all active:scale-95 focus:outline-none flex items-center justify-center ${
+                  isFavorited 
+                    ? 'bg-pink-500/10 border-pink-500/30 text-pink-500 hover:bg-pink-500/20' 
+                    : 'bg-black/35 hover:bg-bg-elevated border-border text-text-primary hover:text-primary'
+                } ${isFavLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                aria-label="Favoritkan"
+                title={isFavorited ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}
+              >
+                {isFavLoading ? (
+                  <Loader2 className="w-4.5 h-4.5 animate-spin" />
+                ) : (
+                  <Heart className={`w-4.5 h-4.5 ${isFavorited ? 'fill-current' : ''}`} />
+                )}
+              </button>
 
               <button
                 onClick={handleShare}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Compass, Tv, BookOpen, Bookmark, History, Calendar, Settings, X, ChevronRight } from 'lucide-react';
+import { Home, Compass, Tv, BookOpen, History, Calendar, Settings, X, ChevronRight, MessageCircle, Heart, Gift, Trophy, Download, Users } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 
 export const Sidebar: React.FC = () => {
@@ -16,6 +16,8 @@ export const Sidebar: React.FC = () => {
   const mainItems = [
     { icon: <Home className="w-5 h-5" />, label: 'Beranda', path: '/' },
     { icon: <Compass className="w-5 h-5" />, label: 'Jelajahi', path: '/browse' },
+    { icon: <MessageCircle className="w-5 h-5" />, label: 'Global Chat', path: '/global-chat' },
+    { icon: <Users className="w-5 h-5 text-primary" />, label: 'Nobar', path: '/watch-party' },
   ];
 
   // Content/Genre Section
@@ -26,8 +28,11 @@ export const Sidebar: React.FC = () => {
 
   // Library Section (Anda)
   const libraryItems = [
-    { icon: <Bookmark className="w-5 h-5" />, label: 'Tersimpan', path: '/bookmarks' },
+    { icon: <Heart className="w-5 h-5" />, label: 'Favorit', path: '/favorites' },
     { icon: <History className="w-5 h-5" />, label: 'Riwayat Tonton', path: '/history' },
+    { icon: <Download className="w-5 h-5 text-primary" />, label: 'Unduhan Saya', path: '/downloads' },
+    { icon: <Gift className="w-5 h-5 text-primary" />, label: 'Misi & Event', path: '/events' },
+    { icon: <Trophy className="w-5 h-5 text-yellow-500" />, label: 'Leaderboard', path: '/leaderboard' },
   ];
 
   // System/Settings Section

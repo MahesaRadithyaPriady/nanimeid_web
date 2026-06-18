@@ -5,7 +5,8 @@ import { UserAvatar } from '../components/ui/UserAvatar';
 import { 
   Bell, Edit3, Save, History, 
   Bookmark, LogOut, ChevronDown, User, Play, Info, Sliders,
-  MessageSquare, CheckCircle, Flame, Clock, Heart, ExternalLink, Lock, Loader2
+  MessageSquare, CheckCircle, Flame, Clock, Heart, ExternalLink, Lock, Loader2,
+  Award, Gift, Star, TrendingUp, Ticket, Sparkles, ChevronRight
 } from 'lucide-react';
 import { 
   checkBirthdateStatus, 
@@ -17,6 +18,18 @@ import {
   fetchProfileCompletedEpisodes, 
   fetchProfileSignInStreak 
 } from '../lib/profileApi';
+import {
+  fetchMyXp,
+  fetchXpLevels,
+  claimXpReward,
+  claimAllLevelRewards,
+  fetchXpHistory,
+  fetchXpStats,
+  type XpMeData,
+  type XpLevelWithRewards,
+  type XpHistoryEntry,
+  type XpStats,
+} from '../lib/xpApi';
 import type { 
   ApiProfileCommentItem, 
   ApiProfileWatchedItem, 
@@ -55,9 +68,17 @@ export const ProfilePage: React.FC = () => {
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
   // Tab states
-  const [activeTab, setActiveTab] = useState<'watched' | 'comments' | 'completed' | 'streak'>('watched');
+  const [activeTab, setActiveTab] = useState<'watched' | 'comments' | 'completed' | 'streak' | 'levels'>('watched');
   const [loadingTab, setLoadingTab] = useState(false);
   const [tabError, setTabError] = useState<string | null>(null);
+
+  // XP & Level state
+  const [xpData, setXpData] = useState<XpMeData | null>(null);
+  const [levelsList, setLevelsList] = useState<XpLevelWithRewards[]>([]);
+  const [loadingXp, setLoadingXp] = useState(false);
+  const [claimingReward, setClaimingReward] = useState<number | null>(null);
+  const [xpHistory, setXpHistory] = useState<XpHistoryEntry[]>([]);
+  const [xpStats, setXpStats] = useState<XpStats | null>(null);
 
   // Tab data
   const [watchedData, setWatchedData] = useState<ApiProfileWatchedItem[]>([]);
@@ -85,6 +106,25 @@ export const ProfilePage: React.FC = () => {
         } else if (activeTab === 'streak') {
           const res = await fetchProfileSignInStreak(userProfile.id!);
           setStreakData(res.data || null);
+        } else if (activeTab === 'levels') {
+          // XP data is already loaded on page mount, refresh if needed
+          const xpRes = await fetchMyXp();
+          setXpData(xpRes.data);
+          const levelsRes = await fetchXpLevels();
+          setLevelsList(levelsRes.data || []);
+          // Fetch XP history and stats
+          try {
+            const historyRes = await fetchXpHistory(20);
+            setXpHistory(historyRes.data || []);
+          } catch (e) {
+            console.log('XP history endpoint not available:', e);
+          }
+          try {
+            const statsRes = await fetchXpStats();
+            setXpStats(statsRes.data);
+          } catch (e) {
+            console.log('XP stats endpoint not available:', e);
+          }
         }
       } catch (err: any) {
         console.error(err);
@@ -120,6 +160,25 @@ export const ProfilePage: React.FC = () => {
       }
     }
     loadBirthdateStatus();
+  }, []);
+
+  // Fetch XP data on page load
+  useEffect(() => {
+    async function loadXpData() {
+      setLoadingXp(true);
+      try {
+        const xpRes = await fetchMyXp();
+        setXpData(xpRes.data);
+        
+        const levelsRes = await fetchXpLevels();
+        setLevelsList(levelsRes.data || []);
+      } catch (err) {
+        console.error('Failed to load XP data:', err);
+      } finally {
+        setLoadingXp(false);
+      }
+    }
+    loadXpData();
   }, []);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -185,6 +244,44 @@ export const ProfilePage: React.FC = () => {
     logout();
     addToast('success', 'Berhasil keluar dari akun');
     navigate('/');
+  };
+
+  const handleClaimReward = async (rewardId: number, rewardType: string) => {
+    setClaimingReward(rewardId);
+    try {
+      await claimXpReward(rewardId);
+      addToast('success', `Reward ${rewardType} berhasil diklaim!`);
+      // Refresh levels list to update claimed status
+      const levelsRes = await fetchXpLevels();
+      setLevelsList(levelsRes.data || []);
+      // Refresh XP data to update balance
+      const xpRes = await fetchMyXp();
+      setXpData(xpRes.data);
+    } catch (err: any) {
+      console.error('Failed to claim reward:', err);
+      addToast('error', err.message || 'Gagal mengklaim reward.');
+    } finally {
+      setClaimingReward(null);
+    }
+  };
+
+  const handleClaimAllRewards = async (levelId: number, levelTitle: string) => {
+    setClaimingReward(-levelId); // Use negative levelId to indicate claim-all
+    try {
+      const res = await claimAllLevelRewards(levelId);
+      const claimed = res.data.claimedCount;
+      addToast('success', `${claimed} reward ${levelTitle} berhasil diklaim!`);
+      // Refresh data
+      const levelsRes = await fetchXpLevels();
+      setLevelsList(levelsRes.data || []);
+      const xpRes = await fetchMyXp();
+      setXpData(xpRes.data);
+    } catch (err: any) {
+      console.error('Failed to claim all rewards:', err);
+      addToast('error', err.message || 'Gagal mengklaim reward.');
+    } finally {
+      setClaimingReward(null);
+    }
   };
 
   return (
@@ -314,9 +411,45 @@ export const ProfilePage: React.FC = () => {
           </div>
 
           <div className="pt-2 flex flex-wrap justify-center sm:justify-start gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider">
-              Level {userProfile.level} ({userProfile.xp} XP)
-            </span>
+            {loadingXp ? (
+              <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading XP...
+              </span>
+            ) : xpData ? (
+              <div className="flex flex-col gap-1.5 w-full max-w-xs">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider flex items-center gap-1.5">
+                    <Award className="w-3 h-3" />
+                    Level {xpData.level?.level_number ?? '?'} — {xpData.level?.title ?? 'Unknown'}
+                  </span>
+                  <span className="text-[10px] font-mono text-muted">
+                    {xpData.current_xp} XP
+                  </span>
+                </div>
+                {/* XP Progress Bar */}
+                <div className="relative w-full h-2 bg-bg-base rounded-full overflow-hidden border border-border/40">
+                  <div 
+                    className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-500"
+                    style={{ width: `${Math.min(xpData.progress.percent, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[9px] text-muted font-mono">
+                  <span>{xpData.progress.currentLevelXpRequired} XP</span>
+                  <span className="text-primary font-bold">{xpData.progress.percent}%</span>
+                  <span>{xpData.progress.nextLevelXpRequired ?? 'MAX'} XP</span>
+                </div>
+                {xpData.progress.xpToNext > 0 && (
+                  <span className="text-[9px] text-text-secondary">
+                    Butuh <strong className="text-primary">{xpData.progress.xpToNext} XP</strong> lagi ke level berikutnya
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary uppercase font-mono tracking-wider">
+                Level {userProfile.level} ({userProfile.xp} XP)
+              </span>
+            )}
           </div>
         </div>
         
@@ -357,7 +490,8 @@ export const ProfilePage: React.FC = () => {
             { id: 'watched', label: 'Riwayat Nonton Publik', icon: <History className="w-4 h-4" /> },
             { id: 'comments', label: 'Komentar Publik', icon: <MessageSquare className="w-4 h-4" /> },
             { id: 'completed', label: 'Selesai Hari Ini', icon: <CheckCircle className="w-4 h-4" /> },
-            { id: 'streak', label: 'Streak Masuk', icon: <Flame className="w-4 h-4" /> }
+            { id: 'streak', label: 'Streak Masuk', icon: <Flame className="w-4 h-4" /> },
+            { id: 'levels', label: 'Level & Reward', icon: <Award className="w-4 h-4" /> }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -556,6 +690,440 @@ export const ProfilePage: React.FC = () => {
                       Gagal mengambil data streak absensi.
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Tab: Level & Rewards */}
+              {activeTab === 'levels' && (
+                <div className="space-y-6 py-4">
+                  {/* XP Summary Card */}
+                  {xpData && (
+                    <div className="p-5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-primary/20 rounded-xl">
+                            <Star className="w-6 h-6 text-primary fill-primary/30" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-text-primary">Level {xpData.level?.level_number ?? '?'} — {xpData.level?.title ?? 'Unknown'}</h4>
+                            <p className="text-[10px] text-muted font-mono">{xpData.current_xp} Total XP</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-black text-primary font-heading">{xpData.progress.percent}%</span>
+                          <p className="text-[9px] text-muted font-bold uppercase">Progress</p>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="space-y-1.5">
+                        <div className="relative w-full h-3 bg-bg-base rounded-full overflow-hidden border border-border/40">
+                          <div 
+                            className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-500 rounded-full"
+                            style={{ width: `${Math.min(xpData.progress.percent, 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted font-mono">
+                          <span>Lv.{xpData.level?.level_number ?? '?'}: {xpData.progress.currentLevelXpRequired} XP</span>
+                          <span>Lv.{(xpData.level?.level_number ?? 0) + 1}: {xpData.progress.nextLevelXpRequired ?? 'MAX'} XP</span>
+                        </div>
+                      </div>
+
+                      {xpData.progress.xpToNext > 0 && (
+                        <div className="flex items-center gap-2 p-3 bg-bg-base/50 rounded-xl border border-border/30">
+                          <TrendingUp className="w-4 h-4 text-primary" />
+                          <span className="text-[11px] text-text-secondary">
+                            Butuh <strong className="text-primary">{xpData.progress.xpToNext} XP</strong> lagi untuk naik level
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* XP Statistics Card */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { 
+                        label: 'XP Hari Ini', 
+                        value: xpStats?.total_xp_today ?? xpData?.current_xp ?? 0,
+                        icon: <Star className="w-4 h-4" />,
+                        color: 'text-primary',
+                        bg: 'bg-primary/10'
+                      },
+                      { 
+                        label: 'XP Minggu Ini', 
+                        value: xpStats?.total_xp_this_week ?? 0,
+                        icon: <TrendingUp className="w-4 h-4" />,
+                        color: 'text-green-500',
+                        bg: 'bg-green-500/10'
+                      },
+                      { 
+                        label: 'Menit Nonton', 
+                        value: xpStats?.minutes_watched_today ?? 0,
+                        icon: <Clock className="w-4 h-4" />,
+                        color: 'text-blue-500',
+                        bg: 'bg-blue-500/10'
+                      },
+                      { 
+                        label: 'XP Rate', 
+                        value: xpStats ? `${xpStats.current_xp_per_minute}/min` : '60/min',
+                        icon: <Sparkles className="w-4 h-4" />,
+                        color: 'text-yellow-500',
+                        bg: 'bg-yellow-500/10'
+                      }
+                    ].map((stat, idx) => (
+                      <div key={idx} className="p-3 bg-bg-surface border border-border/40 rounded-xl space-y-1.5">
+                        <div className={`p-1.5 ${stat.bg} rounded-lg w-fit ${stat.color}`}>
+                          {stat.icon}
+                        </div>
+                        <div>
+                          <span className="text-lg font-black text-text-primary font-heading">{stat.value}</span>
+                          <p className="text-[9px] text-muted font-bold uppercase tracking-wider">{stat.label}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* XP Breakdown by Source */}
+                  {xpStats && (
+                    <div className="p-4 bg-bg-surface border border-border/40 rounded-2xl space-y-3">
+                      <h4 className="text-xs font-bold text-text-primary flex items-center gap-2">
+                        <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                        Breakdown XP Hari Ini
+                      </h4>
+                      <div className="space-y-2.5">
+                        {/* Watch XP */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-text-secondary flex items-center gap-1.5">
+                              <Play className="w-3 h-3" /> Menonton
+                            </span>
+                            <span className="font-mono font-bold text-text-primary">+{xpStats.watch_xp_today} XP</span>
+                          </div>
+                          <div className="h-1.5 bg-bg-base rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 rounded-full"
+                              style={{ width: `${xpStats.total_xp_today > 0 ? (xpStats.watch_xp_today / xpStats.total_xp_today) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Reward XP */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-text-secondary flex items-center gap-1.5">
+                              <Gift className="w-3 h-3" /> Level Rewards
+                            </span>
+                            <span className="font-mono font-bold text-text-primary">+{xpStats.reward_xp_today} XP</span>
+                          </div>
+                          <div className="h-1.5 bg-bg-base rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-purple-500 rounded-full"
+                              style={{ width: `${xpStats.total_xp_today > 0 ? (xpStats.reward_xp_today / xpStats.total_xp_today) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {xpStats.vip_multiplier > 1 && (
+                        <div className="flex items-center gap-2 p-2 bg-primary/5 border border-primary/20 rounded-lg">
+                          <Star className="w-3 h-3 text-primary fill-primary" />
+                          <span className="text-[10px] text-primary font-bold">VIP {xpStats.vip_multiplier}x Multiplier Aktif</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Level Progression Timeline */}
+                  <div className="p-4 bg-bg-surface border border-border/40 rounded-2xl space-y-4">
+                    <h4 className="text-xs font-bold text-text-primary flex items-center gap-2">
+                      <Award className="w-3.5 h-3.5 text-primary" />
+                      Progressi Level
+                    </h4>
+                    <div className="relative">
+                      {/* Timeline line */}
+                      <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border/40" />
+                      
+                      {/* Timeline items - show nearby levels */}
+                      <div className="space-y-4">
+                        {(() => {
+                          const currentLevelNum = xpData?.level?.level_number ?? 1;
+                          const nearbyLevels = levelsList.filter(
+                            l => l.level_number >= currentLevelNum - 1 && l.level_number <= currentLevelNum + 3
+                          );
+                          if (nearbyLevels.length === 0) return null;
+                          
+                          return nearbyLevels.map((level) => {
+                            const isUnlocked = xpData && xpData.current_xp >= level.xp_required_total;
+                            const isCurrent = xpData?.level_id === level.id;
+                            const progressPercent = isCurrent && xpData
+                              ? xpData.progress.percent
+                              : isUnlocked ? 100 : 0;
+                            
+                            return (
+                              <div key={level.id} className="relative flex items-start gap-3 pl-10">
+                                {/* Timeline dot */}
+                                <div className={`absolute left-2.5 top-1 w-3 h-3 rounded-full border-2 ${
+                                  isCurrent
+                                    ? 'bg-primary border-primary shadow-glow-sm'
+                                    : isUnlocked
+                                    ? 'bg-green-500 border-green-500'
+                                    : 'bg-bg-base border-border/60'
+                                }`} />
+                                
+                                {/* Level info */}
+                                <div className={`flex-1 p-3 rounded-xl border ${
+                                  isCurrent
+                                    ? 'bg-primary/5 border-primary/30'
+                                    : isUnlocked
+                                    ? 'bg-bg-base/50 border-border/40'
+                                    : 'bg-bg-base/20 border-border/20 opacity-60'
+                                }`}>
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className={`text-xs font-bold ${isCurrent ? 'text-primary' : 'text-text-primary'}`}>
+                                        Level {level.level_number}: {level.title}
+                                      </span>
+                                      <p className="text-[9px] text-muted font-mono">{level.xp_required_total} XP</p>
+                                    </div>
+                                    {isCurrent && (
+                                      <span className="text-[10px] font-black text-primary">{progressPercent.toFixed(0)}%</span>
+                                    )}
+                                    {isUnlocked && !isCurrent && (
+                                      <CheckCircle className="w-4 h-4 text-green-500" />
+                                    )}
+                                  </div>
+                                  {isCurrent && (
+                                    <div className="mt-2 h-1.5 bg-bg-base rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
+                                        style={{ width: `${progressPercent}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* XP History */}
+                  {xpHistory.length > 0 && (
+                    <div className="p-4 bg-bg-surface border border-border/40 rounded-2xl space-y-3">
+                      <h4 className="text-xs font-bold text-text-primary flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-primary" />
+                        Riwayat XP Terbaru
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {xpHistory.slice(0, 10).map((entry) => (
+                          <div key={entry.id} className="flex items-center justify-between p-2.5 bg-bg-base/40 rounded-xl">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className={`p-1.5 rounded-lg shrink-0 ${
+                                entry.event_type === 'watch_progress_minute'
+                                  ? 'bg-blue-500/10 text-blue-500'
+                                  : entry.event_type === 'level_reward'
+                                  ? 'bg-purple-500/10 text-purple-500'
+                                  : entry.event_type === 'daily_login'
+                                  ? 'bg-green-500/10 text-green-500'
+                                  : 'bg-bg-base text-muted'
+                              }`}>
+                                {entry.event_type === 'watch_progress_minute' && <Play className="w-3 h-3" />}
+                                {entry.event_type === 'level_reward' && <Gift className="w-3 h-3" />}
+                                {entry.event_type === 'daily_login' && <Flame className="w-3 h-3" />}
+                                {entry.event_type === 'event_bonus' && <Sparkles className="w-3 h-3" />}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-[10px] font-bold text-text-primary block truncate">
+                                  {entry.description || entry.event_type.replace(/_/g, ' ')}
+                                </span>
+                                <span className="text-[9px] text-muted font-mono">
+                                  {new Date(entry.created_at).toLocaleString('id-ID', { 
+                                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                            <span className={`text-xs font-black font-mono shrink-0 ${
+                              entry.amount > 0 ? 'text-green-500' : 'text-red-500'
+                            }`}>
+                              {entry.amount > 0 ? '+' : ''}{entry.amount} XP
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Levels List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-primary" />
+                        Daftar Level & Reward
+                      </h4>
+                      <span className="text-[10px] text-muted font-mono">{levelsList.length} level</span>
+                    </div>
+
+                    {levelsList.length > 0 ? (
+                      <div className="space-y-3">
+                        {levelsList.map((level) => {
+                          const isCurrentLevel = xpData?.level_id === level.id;
+                          const isUnlocked = xpData && xpData.current_xp >= level.xp_required_total;
+                          const hasUnclaimedRewards = level.rewards?.some(r => !r.claimed && r.is_active);
+                          const unclaimedCount = level.rewards?.filter(r => !r.claimed && r.is_active).length ?? 0;
+                          const isClaiming = claimingReward === -level.id;
+
+                          return (
+                            <div
+                              key={level.id}
+                              className={`p-4 border rounded-2xl transition-all ${
+                                isCurrentLevel
+                                  ? 'bg-primary/5 border-primary/40 shadow-glow-sm'
+                                  : isUnlocked
+                                  ? 'bg-bg-surface border-border/40 hover:border-primary/30'
+                                  : 'bg-bg-base/30 border-border/20 opacity-60'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className={`p-2 rounded-xl shrink-0 ${
+                                    isCurrentLevel
+                                      ? 'bg-primary text-black'
+                                      : isUnlocked
+                                      ? 'bg-primary/20 text-primary'
+                                      : 'bg-bg-base text-muted'
+                                  }`}>
+                                    <Award className="w-5 h-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <h5 className="text-sm font-bold text-text-primary truncate">
+                                        Level {level.level_number}: {level.title}
+                                      </h5>
+                                      {isCurrentLevel && (
+                                        <span className="px-1.5 py-0.5 bg-primary text-black text-[8px] font-black uppercase rounded font-mono">Current</span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-muted font-mono mt-0.5">
+                                      {level.xp_required_total} XP diperlukan
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Claim All Button */}
+                                {isUnlocked && hasUnclaimedRewards && (
+                                  <button
+                                    onClick={() => handleClaimAllRewards(level.id, level.title)}
+                                    disabled={isClaiming}
+                                    className="shrink-0 px-3 py-1.5 bg-primary hover:bg-primary-light text-black text-[10px] font-bold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                  >
+                                    {isClaiming ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Sparkles className="w-3 h-3" />
+                                    )}
+                                    Klaim Semua ({unclaimedCount})
+                                  </button>
+                                )}
+
+                                {/* Locked indicator */}
+                                {!isUnlocked && (
+                                  <div className="shrink-0 p-1.5 bg-bg-base rounded-lg">
+                                    <Lock className="w-4 h-4 text-muted" />
+                                  </div>
+                                )}
+
+                                {/* All claimed indicator */}
+                                {isUnlocked && !hasUnclaimedRewards && level.rewards && level.rewards.length > 0 && (
+                                  <div className="shrink-0 flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-lg">
+                                    <CheckCircle className="w-3 h-3 text-green-500" />
+                                    <span className="text-[9px] text-green-500 font-bold">Diklaim</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Rewards List */}
+                              {level.rewards && level.rewards.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-border/20 space-y-2">
+                                  {level.rewards.map((reward) => (
+                                    <div
+                                      key={reward.id}
+                                      className={`flex items-center justify-between p-2.5 rounded-xl ${
+                                        reward.claimed
+                                          ? 'bg-bg-base/30 opacity-60'
+                                          : isUnlocked
+                                          ? 'bg-bg-base/50 hover:bg-bg-base/70'
+                                          : 'bg-bg-base/20'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2.5">
+                                        <div className={`p-1.5 rounded-lg ${
+                                          reward.type === 'COIN'
+                                            ? 'bg-yellow-500/10 text-yellow-500'
+                                            : reward.type === 'VIP_DAYS'
+                                            ? 'bg-purple-500/10 text-purple-500'
+                                            : 'bg-blue-500/10 text-blue-500'
+                                        }`}>
+                                          {reward.type === 'COIN' && <Gift className="w-3.5 h-3.5" />}
+                                          {reward.type === 'VIP_DAYS' && <Star className="w-3.5 h-3.5" />}
+                                          {reward.type === 'VOUCHER' && <Ticket className="w-3.5 h-3.5" />}
+                                        </div>
+                                        <div>
+                                          <span className="text-[11px] font-bold text-text-primary block">
+                                            {reward.type === 'COIN' && `${reward.coins_amount} Coins`}
+                                            {reward.type === 'VIP_DAYS' && `${reward.vip_days} Hari VIP`}
+                                            {reward.type === 'VOUCHER' && `Voucher ${reward.voucher_valid_days} hari`}
+                                          </span>
+                                          <span className="text-[9px] text-muted font-mono uppercase">
+                                            {reward.type}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {reward.claimed ? (
+                                        <span className="text-[9px] text-green-500 font-bold flex items-center gap-1">
+                                          <CheckCircle className="w-3 h-3" />
+                                          Diklaim
+                                        </span>
+                                      ) : isUnlocked && reward.is_active ? (
+                                        <button
+                                          onClick={() => handleClaimReward(reward.id, reward.type)}
+                                          disabled={claimingReward === reward.id}
+                                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary text-[10px] font-bold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1"
+                                        >
+                                          {claimingReward === reward.id ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            <ChevronRight className="w-3 h-3" />
+                                          )}
+                                          Klaim
+                                        </button>
+                                      ) : (
+                                        <Lock className="w-3.5 h-3.5 text-muted" />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* No rewards */}
+                              {(!level.rewards || level.rewards.length === 0) && (
+                                <p className="mt-3 pt-3 border-t border-border/20 text-[10px] text-muted italic">
+                                  Belum ada reward untuk level ini.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center text-muted text-xs">
+                        <Award className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                        <p>Gagal memuat daftar level.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

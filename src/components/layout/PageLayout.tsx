@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { ToastContainer } from '../ui/Toast';
 import { useAppStore } from '../../stores/useAppStore';
+import { PersistentWatchPage } from '../player/PersistentWatchPage';
 
 export const PageLayout: React.FC = () => {
   const { sidebarExpanded } = useAppStore();
@@ -25,6 +26,7 @@ export const PageLayout: React.FC = () => {
           }`}
         >
           <Outlet />
+          <PersistentWatchPage />
         </main>
       </div>
 

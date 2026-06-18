@@ -3,10 +3,11 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize2, 
   Minimize2, Settings, ArrowLeft, ArrowRight, Heart, Send, 
-  MessageSquare, Star, Loader2, Smile, VideoOff, Lock 
+  MessageSquare, Star, Loader2, Smile, VideoOff, Lock, Download, Trash2
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { useAppStore } from '../stores/useAppStore';
+import { useDownloadStore } from '../stores/useDownloadStore';
 import { Badge } from '../components/ui/Badge';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { 
@@ -23,6 +24,7 @@ import {
   purchaseSticker,
   type ApiEpisodeNavigation
 } from '../lib/animeApi';
+import { postWatchTick, type WatchTickResponse } from '../lib/watchApi';
 import type { ApiAnime, ApiEpisode, ApiComment, ApiSticker } from '../types';
 
 /** Format seconds into mm:ss or hh:mm:ss */
@@ -187,20 +189,29 @@ const WatchPageSkeleton: React.FC = () => {
   );
 };
 
-export const WatchPage: React.FC = () => {
-  const { id, episodeNumber } = useParams<{ id: string; episodeNumber: string }>();
+export interface WatchPageProps {
+  forceId?: string;
+  forceEpisode?: string;
+  isMiniMode?: boolean;
+}
+
+export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isMiniMode }) => {
+  const params = useParams<{ id: string; episodeNumber: string }>();
   const navigate = useNavigate();
+  
+  const id = forceId || params.id;
+  const episodeNumber = forceEpisode || params.episodeNumber;
   const currentEpNum = parseInt(episodeNumber || '1', 10);
 
   const { 
     videoVolume, setVideoVolume, 
     videoQuality, setVideoQuality, 
     addWatchHistory, watchHistory, 
-    isLoggedIn, userProfile
+    isLoggedIn, userProfile, updateProfile
   } = useAppStore();
 
-  // Silence all toast notifications on WatchPage as requested
-  const addToast = (..._args: any[]) => {};
+  // We re-enable toasts so we can debug the Watch XP Lite issue
+  const { addToast } = useAppStore();
 
   // API States
   const [anime, setAnime] = useState<ApiAnime | null>(null);
@@ -210,6 +221,110 @@ export const WatchPage: React.FC = () => {
   const [relatedAnimes, setRelatedAnimes] = useState<ApiAnime[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Download Store States & Handlers
+  const {
+    downloadEpisode,
+    cancelDownload,
+    deleteDownload,
+    isEpisodeDownloaded,
+    downloadingState,
+    downloadedList,
+    initDownloads
+  } = useDownloadStore();
+
+  const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+  const [downloadQualities, setDownloadQualities] = useState<any[]>([]);
+  const [loadingQualities, setLoadingQualities] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const [offlineVideoUrl, setOfflineVideoUrl] = useState<string | null>(null);
+
+  // Initialize downloads list from DB
+  useEffect(() => {
+    initDownloads();
+  }, [initDownloads]);
+
+  // Click outside for download dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setShowDownloadDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch download qualities on demand
+  const handleDownloadClick = async () => {
+    if (showDownloadDropdown) {
+      setShowDownloadDropdown(false);
+      return;
+    }
+    
+    setShowDownloadDropdown(true);
+    if (!currentEpisode?.id) return;
+    
+    if (downloadQualities.length === 0) {
+      if (!navigator.onLine) {
+        useAppStore.getState().addToast('error', 'Anda sedang offline. Tidak dapat memuat daftar kualitas unduhan.');
+        setShowDownloadDropdown(false);
+        return;
+      }
+      setLoadingQualities(true);
+      try {
+        const { fetchEpisodeDownloadLink } = await import('../lib/animeApi');
+        const res = await fetchEpisodeDownloadLink(currentEpisode.id);
+        if (res && res.data && res.data.qualities) {
+          setDownloadQualities(res.data.qualities);
+        }
+      } catch (e) {
+        console.error('Failed to fetch download qualities:', e);
+        // Fallback to episode qualities if available
+        if (currentEpisode.qualities) {
+          setDownloadQualities(currentEpisode.qualities);
+        }
+      } finally {
+        setLoadingQualities(false);
+      }
+    }
+  };
+
+  // Load offline video url if downloaded
+  useEffect(() => {
+    if (!currentEpisode?.id) {
+      setOfflineVideoUrl(null);
+      return;
+    }
+    
+    let active = true;
+    const loadOfflineVideo = async () => {
+      const isDownloaded = isEpisodeDownloaded(currentEpisode.id);
+      if (isDownloaded) {
+        try {
+          const blob = await useDownloadStore.getState().getVideoBlob(currentEpisode.id);
+          if (blob && active) {
+            const url = URL.createObjectURL(blob);
+            setOfflineVideoUrl(url);
+            console.log('[Offline Playback] Loaded local video blob URL:', url);
+          }
+        } catch (e) {
+          console.error('Failed to load video blob:', e);
+        }
+      } else {
+        setOfflineVideoUrl(null);
+      }
+    };
+
+    loadOfflineVideo();
+
+    return () => {
+      active = false;
+      if (offlineVideoUrl) {
+        URL.revokeObjectURL(offlineVideoUrl);
+      }
+    };
+  }, [currentEpisode?.id, downloadedList, isEpisodeDownloaded]);
 
   // Video Ref & State
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -230,8 +345,20 @@ export const WatchPage: React.FC = () => {
   const [isChangingQuality, setIsChangingQuality] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [floatingXp, setFloatingXp] = useState<{ amount: number; id: number } | null>(null);
+
+  // Watch Tick API state
+  const [watchTickData, setWatchTickData] = useState<WatchTickResponse['data'] | null>(null);
+  const [rewardProgress, setRewardProgress] = useState(0); // 0-100% progress to next reward
+
+  useEffect(() => {
+    if (watchTickData) {
+      console.log('[Watch Tick State]:', watchTickData, rewardProgress);
+    }
+  }, [watchTickData, rewardProgress]);
 
   const bufferWatchdogRef = useRef<number | null>(null);
+  const watchTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Interactive Comments State
   const [comments, setComments] = useState<ApiComment[]>([]);
@@ -253,6 +380,11 @@ export const WatchPage: React.FC = () => {
     const loadStickerData = async () => {
       setStickerLoading(true);
       setStickerError(null);
+      if (!navigator.onLine) {
+        setStickerError('Anda sedang offline. Tidak dapat memuat stiker.');
+        setStickerLoading(false);
+        return;
+      }
       try {
         if (isVipEligible === null) {
           const eligibleRes = await fetchVipEligibility();
@@ -284,6 +416,10 @@ export const WatchPage: React.FC = () => {
 
   const handleSelectSticker = async (sticker: ApiSticker) => {
     if (!currentEpisode?.id) return;
+    if (!navigator.onLine) {
+      window.alert('Anda sedang offline. Tidak dapat mengirim stiker.');
+      return;
+    }
     try {
       const stickerId = (sticker as any).itemId || (sticker as any).sticker_id || (sticker as any).item_id || sticker.id;
       const res = await postComment({
@@ -307,6 +443,10 @@ export const WatchPage: React.FC = () => {
   };
 
   const handlePurchaseSticker = async (sticker: ApiSticker) => {
+    if (!navigator.onLine) {
+      window.alert('Anda sedang offline. Tidak dapat membeli stiker.');
+      return;
+    }
     const itemId = (sticker as any).itemId || (sticker as any).sticker_id || (sticker as any).item_id || sticker.id;
     console.log('[DEBUG] Sticker Object:', sticker);
     console.log('[DEBUG] Computed itemId:', itemId);
@@ -334,12 +474,26 @@ export const WatchPage: React.FC = () => {
     if (!id) return;
     const loadAnimeDetail = async () => {
       try {
+        if (!navigator.onLine) {
+          throw new Error('Offline mode');
+        }
         const detailRes = await fetchAnimeDetail(id);
         const data = detailRes.data;
         setAnime(data);
         setEpisodes(data.episodes ?? []);
       } catch (err) {
         console.error('Failed to load anime details:', err);
+        // Fallback to offline stored data if available
+        const offlineEpisode = useDownloadStore.getState().downloadedList.find(
+          item => String(item.animeId) === String(id)
+        );
+        if (offlineEpisode && offlineEpisode.animeData) {
+          setAnime(offlineEpisode.animeData);
+          const offlineEps = useDownloadStore.getState().downloadedList
+            .filter(item => String(item.animeId) === String(id))
+            .map(item => item.episodeData);
+          setEpisodes(offlineEps);
+        }
       }
     };
     loadAnimeDetail();
@@ -352,6 +506,9 @@ export const WatchPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
+        if (!navigator.onLine) {
+          throw new Error('Offline mode');
+        }
         const [epRes, similarRes] = await Promise.allSettled([
           fetchEpisodeByNumber(id, currentEpNum),
           fetchSimilarAnime(id, { limit: 4 })
@@ -371,7 +528,22 @@ export const WatchPage: React.FC = () => {
         }
       } catch (err: any) {
         console.error(err);
-        setError(err.message || 'Gagal memuat detail episode');
+        // Fallback to offline stored data if available
+        const offlineItem = useDownloadStore.getState().downloadedList.find(
+          item => String(item.animeId) === String(id) && String(item.episodeNumber) === String(currentEpNum)
+        );
+        if (offlineItem) {
+          setCurrentEpisode(offlineItem.episodeData);
+          setNavigation({
+            previousEpisode: null,
+            nextEpisode: null,
+            totalEpisodes: 1,
+            currentEpisodeNumber: Number(currentEpNum)
+          });
+          setError(null);
+        } else {
+          setError(err.message || 'Gagal memuat detail episode');
+        }
       } finally {
         setIsLoading(false);
       }
@@ -391,6 +563,7 @@ export const WatchPage: React.FC = () => {
 
     // Fetch initial list
     const loadComments = async () => {
+      if (!navigator.onLine) return;
       try {
         const res = await fetchComments({ episodeId: currentEpisode.id, take: 50 });
         if (!cancelled && res.comments) {
@@ -403,38 +576,46 @@ export const WatchPage: React.FC = () => {
 
     loadComments();
 
-    // Setup SSE connection
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
-    const es = new EventSource(`${baseUrl}/comments/sse/stream?episodeId=${currentEpisode.id}`);
+    let es: EventSource | null = null;
+    
+    // Setup SSE connection only if online
+    if (navigator.onLine) {
+      const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
+      es = new EventSource(`${baseUrl}/comments/sse/stream?episodeId=${currentEpisode.id}`);
 
-    es.addEventListener('new_comment', (e) => {
-      try {
-        const comment = JSON.parse(e.data);
-        if (comment && !comment.is_delete) {
-          setComments((prev) => {
-            if (prev.some((c) => c.id === comment.id)) return prev;
-            return [comment, ...prev];
-          });
+      es.addEventListener('new_comment', (e) => {
+        try {
+          const comment = JSON.parse(e.data);
+          if (comment && !comment.is_delete) {
+            setComments((prev) => {
+              if (prev.some((c) => c.id === comment.id)) return prev;
+              return [comment, ...prev];
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE comment:', err);
         }
-      } catch (err) {
-        console.error('Failed to parse SSE comment:', err);
-      }
-    });
+      });
 
-    es.onerror = () => {
-      console.warn('SSE EventSource disconnected, browser will auto-reconnect');
-    };
+      es.onerror = () => {
+        console.warn('SSE EventSource disconnected, browser will auto-reconnect');
+      };
+    }
 
     return () => {
       cancelled = true;
-      es.close();
+      if (es) {
+        es.close();
+      }
     };
   }, [currentEpisode?.id]);
+
+  // Removed active timer useEffect. Handled in handleTimeUpdate.
 
   const isLoginRestricted = !isLoggedIn;
   const isUserVip = isLoggedIn && !!userProfile?.isVip;
   const isVipRestricted = !isLoginRestricted && !!currentEpisode?.early_access && !isUserVip;
-  const hasRealSources = !!currentEpisode?.hls_master_url || 
+  const hasRealSources = !!offlineVideoUrl || !!currentEpisode?.hls_master_url || 
     (currentEpisode?.qualities && currentEpisode.qualities.length > 0 && 
       currentEpisode.qualities.some(q => !!q.source_quality || !!q.hls_url));
   const isSourceNotFound = currentEpisode && !isLoginRestricted && !isVipRestricted && !hasRealSources;
@@ -443,6 +624,12 @@ export const WatchPage: React.FC = () => {
     if (!currentEpisode) return [];
     if (isLoginRestricted) return [];
     if (isVipRestricted) return [];
+    
+    // Prioritize local offline video URL if available
+    if (offlineVideoUrl) {
+      return [offlineVideoUrl];
+    }
+
     if (!hasRealSources) return [];
 
     const candidates: string[] = [];
@@ -679,6 +866,10 @@ export const WatchPage: React.FC = () => {
           e.preventDefault();
           toggleFullscreen();
           break;
+        case 'p':
+          e.preventDefault();
+          togglePiP();
+          break;
         case 'm':
           e.preventDefault();
           toggleMute();
@@ -691,6 +882,21 @@ export const WatchPage: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [videoVolume, isFullscreen, isPlaying]);
+
+  // Auto PiP when navigating away or minimizing
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!videoRef.current || !document.pictureInPictureEnabled) return;
+      if (document.hidden && isPlaying && !document.pictureInPictureElement) {
+        videoRef.current.requestPictureInPicture().catch((err) => {
+          console.warn("Auto PiP gagal:", err);
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isPlaying]);
 
   // Fade out controls on idle mouse
   const handleMouseMove = () => {
@@ -729,12 +935,113 @@ export const WatchPage: React.FC = () => {
         anime.gambar_anime
       );
 
-      // Save to backend if authenticated
-      if (isLoggedIn) {
+      // Save to backend if authenticated and online
+      if (isLoggedIn && navigator.onLine) {
         saveEpisodeProgress(currentEpisode.id, current, isCompleted).catch(console.error);
       }
     }
   };
+
+  // Watch Tick API: send tick every 60 seconds while video is playing
+  // Reward only given after 60 seconds accumulated on the same episode
+  // First tick always 0 reward — server can't verify watch time before first tick
+  const sendWatchTick = () => {
+    if (!isLoggedIn || !currentEpisode?.id || !isPlaying || !navigator.onLine) return;
+    
+    postWatchTick(currentEpisode.id, { seconds: 60 })
+      .then((res) => {
+        console.log('[Watch Tick] Response:', res.data);
+        setWatchTickData(res.data);
+        
+        const { tick, xp, coin, watch_reward } = res.data;
+        
+        // Update reward progress bar (0-100%)
+        const progress = (tick.seconds_accumulated % 60) / 60 * 100;
+        setRewardProgress(progress);
+        
+        // Debug: show accumulation progress and VIP tier info
+        const vipInfo = xp.is_vip ? `VIP ${xp.vip_tier} (${xp.xp_per_minute} XP/min)` : 'Non-VIP (10 XP/min)';
+        console.log(
+          `[Watch Tick] Accumulated: ${tick.seconds_accumulated}s | ` +
+          `Next reward in: ${tick.seconds_until_next_reward}s | ` +
+          `First tick: ${tick.is_first_tick ?? false} | ` +
+          `${vipInfo}`
+        );
+        
+        // Only show reward UI if reward was actually given this tick
+        if (tick.seconds_rewarded > 0) {
+          const xpGained = xp.gained_this_tick;
+          const xpLeaderboard = xp.gained_leaderboard_this_tick;
+          const coinsGained = coin.gained_this_tick;
+          
+          // Update XP and coins in store
+          if (xp.current_xp !== undefined) {
+            updateProfile({ xp: xp.current_xp });
+          }
+          if (coin.balance !== undefined) {
+            updateProfile({ coins: coin.balance });
+          }
+          
+          // Show toast with VIP tier info
+          const tierBadge = xp.is_vip ? ` [${xp.vip_tier}]` : '';
+          const levelInfo = xp.level ? ` Lv.${xp.level.level_number}` : '';
+          // addToast('success', `+${xpGained} XP${tierBadge}${levelInfo} & +${coinsGained} Coin`);
+          
+          // Show floating XP animation with tier color
+          setFloatingXp({ amount: xpGained, id: Date.now() });
+          setTimeout(() => setFloatingXp(null), 3000);
+          
+          // Log leaderboard XP
+          console.log(`[Watch Tick] Leaderboard XP: +${xpLeaderboard} (Rank: ${res.data.leaderboard?.rank_today ?? 'N/A'})`);
+          
+          // Check for watch reward tiers
+          if (watch_reward?.pending_coins && watch_reward.pending_coins > 0) {
+            addToast('info', `🎁 Watch reward: ${watch_reward.pending_coins} coins available to claim!`);
+          }
+        } else {
+          // No reward yet (first tick or accumulation < 60s)
+          console.log(
+            `[Watch Tick] No reward yet. ` +
+            `Accumulated: ${tick.seconds_accumulated}s, ` +
+            `Need: ${tick.seconds_until_next_reward}s more`
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('[Watch Tick] Failed:', err);
+      });
+  };
+
+  const startWatchTick = () => {
+    stopWatchTick(); // Clear any existing interval
+    if (!isLoggedIn || !currentEpisode?.id) {
+      console.log('[Watch Tick] Not starting: not logged in or no episode');
+      return;
+    }
+    console.log('[Watch Tick] Starting interval (60s)');
+    // Send first tick immediately, then every 60 seconds
+    sendWatchTick();
+    watchTickIntervalRef.current = setInterval(sendWatchTick, 60_000);
+  };
+
+  const stopWatchTick = () => {
+    if (watchTickIntervalRef.current) {
+      console.log('[Watch Tick] Stopping interval');
+      clearInterval(watchTickIntervalRef.current);
+      watchTickIntervalRef.current = null;
+    }
+  };
+
+  // Start/stop watch tick based on playing state and episode
+  useEffect(() => {
+    if (isPlaying && isLoggedIn && currentEpisode?.id) {
+      startWatchTick();
+    } else {
+      stopWatchTick();
+    }
+    // Cleanup on unmount or episode change
+    return () => stopWatchTick();
+  }, [isPlaying, currentEpisode?.id, isLoggedIn]);
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
@@ -842,6 +1149,20 @@ export const WatchPage: React.FC = () => {
     }
   };
 
+  const togglePiP = async () => {
+    if (!videoRef.current || !document.pictureInPictureEnabled) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error("Gagal menggunakan Picture-in-Picture:", error);
+      addToast('error', 'Gagal masuk ke mode Picture-in-Picture');
+    }
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(document.fullscreenElement !== null);
@@ -873,6 +1194,10 @@ export const WatchPage: React.FC = () => {
   // Handle Comment Submission
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!navigator.onLine) {
+      window.alert('Anda sedang offline. Tidak dapat mengirim komentar.');
+      return;
+    }
     if (!isLoggedIn) {
       window.alert('Login terlebih dahulu untuk berkomentar!');
       return;
@@ -989,32 +1314,48 @@ export const WatchPage: React.FC = () => {
   const isFilm = anime.content_type === 'FILM';
 
   return (
-    <div className="pb-16 space-y-6">
+    <div className={isMiniMode ? "w-full h-full bg-black flex items-center justify-center" : "pb-16 space-y-6"}>
       
       {/* Back to details link */}
-      <button 
-        onClick={() => {
-          navigate(`/anime/${anime.id}`, { replace: true });
-        }}
-        className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary hover:text-primary transition-colors focus:outline-none cursor-pointer"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        <span>Kembali ke Detail Anime</span>
-      </button>
+      {!isMiniMode && (
+        <button 
+          onClick={() => {
+            navigate(`/anime/${anime.id}`, { replace: true });
+          }}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary hover:text-primary transition-colors focus:outline-none cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Kembali ke Detail Anime</span>
+        </button>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className={isMiniMode ? "w-full h-full" : "grid grid-cols-1 lg:grid-cols-3 gap-6 items-start"}>
         
         {/* Left Area: Player, Title, comments */}
-        <div className={`${isFilm ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
+        <div className={isMiniMode ? "w-full h-full" : `${isFilm ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
           
           {/* Video Player Box */}
           <div 
             ref={playerContainerRef}
             onMouseMove={handleMouseMove}
-            className={`relative aspect-[16/9] w-full bg-black rounded-2xl overflow-hidden border border-border/40 select-none group/player shadow-2xl hover:shadow-[0_0_35px_rgba(255,102,205,0.15)] transition-shadow duration-500 ${
-              isFullscreen ? 'h-screen w-screen border-none rounded-none' : ''
+            className={`relative w-full bg-black overflow-hidden select-none group/player transition-shadow duration-500 ${
+              isFullscreen ? 'h-screen w-screen border-none rounded-none' : 
+              isMiniMode ? 'w-full h-full object-cover rounded-none' : 'aspect-[16/9] rounded-2xl border border-border/40 shadow-2xl hover:shadow-[0_0_35px_rgba(255,102,205,0.15)]'
             }`}
           >
+            {/* Floating XP Animation */}
+            {floatingXp && (
+              <div 
+                key={floatingXp.id}
+                className="absolute top-6 right-6 z-50 animate-float-up pointer-events-none"
+              >
+                <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-bold px-4 py-2 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] border border-yellow-400/50 flex items-center gap-2">
+                  <Star className="w-4 h-4 fill-white" />
+                  +{floatingXp.amount} XP
+                </div>
+              </div>
+            )}
+
             {/* Custom Video Element */}
             {(!isLoginRestricted && !isVipRestricted && !isSourceNotFound) && (
               <video
@@ -1304,6 +1645,17 @@ export const WatchPage: React.FC = () => {
                         )}
                       </div>
 
+                      {/* Picture-in-Picture Button */}
+                      <button 
+                        onClick={togglePiP}
+                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
+                        title="Picture-in-Picture (P)"
+                      >
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H11V15H19V11ZM21 19H3C1.89543 19 1 18.1046 1 17V7C1 5.89543 1.89543 5 3 5H21C22.1046 5 23 5.89543 23 7V17C23 18.1046 22.1046 19 21 19ZM21 17V7H3V17H21Z" />
+                        </svg>
+                      </button>
+
                       {/* Fullscreen Button */}
                       <button 
                         onClick={toggleFullscreen}
@@ -1447,11 +1799,13 @@ export const WatchPage: React.FC = () => {
             )}
           </div>
 
-          {/* Episode Meta Info and Navigation */}
-          <div className="bg-bg-sidebar/65 backdrop-blur-sm border border-border/30 rounded-2xl p-5 sm:p-6 text-left space-y-4 shadow-lg">
-            
-            {/* Main Title and Navigation Row */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/20 pb-4">
+          {!isMiniMode && (
+            <>
+              {/* Episode Meta Info and Navigation */}
+              <div className="bg-bg-sidebar/65 backdrop-blur-sm border border-border/30 rounded-2xl p-5 sm:p-6 text-left space-y-4 shadow-lg">
+                
+                {/* Main Title and Navigation Row */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/20 pb-4">
               <div className="space-y-1.5 flex-1 min-w-0">
                 <span className="text-[10px] font-bold text-primary uppercase tracking-widest font-mono">Sedang Diputar</span>
                 <h1 className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight tracking-tight">
@@ -1465,28 +1819,114 @@ export const WatchPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Navigation prev/next episode */}
-              {!isFilm && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    disabled={!navigation?.previousEpisode}
-                    onClick={() => navigate(`/watch/${id}/ep/${navigation?.previousEpisode?.nomor_episode}`)}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-bg-base hover:bg-bg-elevated border border-border/60 hover:border-primary/40 text-xs font-bold text-text-primary rounded-xl transition-all disabled:opacity-40 disabled:hover:bg-bg-base disabled:hover:border-border/60 active:scale-95 shadow-sm focus:outline-none"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Sebelumnya</span>
-                  </button>
-                  
-                  <button
-                    disabled={!navigation?.nextEpisode}
-                    onClick={() => navigate(`/watch/${id}/ep/${navigation?.nextEpisode?.nomor_episode}`)}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none"
-                  >
-                    <span>Berikutnya</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+              {/* Navigation & Download Actions */}
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {/* Download Controls */}
+                {currentEpisode && (
+                  <div className="relative" ref={downloadMenuRef}>
+                    {downloadingState[currentEpisode.id]?.state === 'downloading' ? (
+                      <button
+                        onClick={() => cancelDownload(currentEpisode.id)}
+                        className="relative flex items-center gap-1.5 px-4 py-2.5 bg-bg-base border border-border/60 text-xs font-bold text-text-primary rounded-xl overflow-hidden hover:border-red-500 hover:text-red-400 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group"
+                        title="Batalkan Unduhan"
+                      >
+                        {/* Background Progress Bar */}
+                        <div 
+                          className="absolute left-0 top-0 bottom-0 bg-primary/20 transition-all duration-300 ease-linear z-0" 
+                          style={{ width: `${downloadingState[currentEpisode.id]?.progress || 0}%` }}
+                        />
+                        <div className="relative z-10 flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary group-hover:text-red-400" />
+                          <span>Mengunduh... {downloadingState[currentEpisode.id]?.progress}%</span>
+                        </div>
+                      </button>
+                    ) : isEpisodeDownloaded(currentEpisode.id) ? (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Apakah Anda yakin ingin menghapus episode unduhan ini?')) {
+                            deleteDownload(currentEpisode.id);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-green-500/10 border border-green-500/30 text-xs font-bold text-green-400 rounded-xl hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group/dl"
+                        title="Hapus Unduhan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-green-400 group-hover/dl:text-white" />
+                        <span>Tersimpan</span>
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleDownloadClick}
+                          className={`flex items-center gap-1.5 px-4 py-2.5 bg-bg-base hover:bg-bg-elevated border rounded-xl transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer ${
+                            showDownloadDropdown ? 'border-primary text-primary' : 'border-border/60 hover:border-primary/40 text-text-primary'
+                          }`}
+                          title="Unduh Episode"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Unduh</span>
+                        </button>
+                        
+                        {/* Quality Dropdown Menu */}
+                        {showDownloadDropdown && (
+                          <div className="absolute right-0 bottom-full mb-2 w-48 bg-black/95 border border-white/10 rounded-xl p-2 shadow-2xl z-40 space-y-1 backdrop-blur-md">
+                            <div className="px-2.5 py-1 border-b border-white/10 text-left select-none">
+                              <span className="text-[9.5px] font-bold text-white/50 tracking-wider font-sans">PILIH KUALITAS</span>
+                            </div>
+                            {loadingQualities ? (
+                              <div className="flex items-center justify-center py-4">
+                                <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                              </div>
+                            ) : downloadQualities.length > 0 ? (
+                              <div className="space-y-0.5 text-left">
+                                {downloadQualities.map((q) => (
+                                  <button
+                                    key={q.id}
+                                    onClick={() => {
+                                      downloadEpisode(anime!, currentEpisode, q.nama_quality, q.source_quality);
+                                      setShowDownloadDropdown(false);
+                                    }}
+                                    className="w-full text-left text-xs px-2.5 py-2 hover:bg-white/5 hover:text-primary rounded-lg font-medium transition-colors flex items-center justify-between cursor-pointer text-text-primary"
+                                  >
+                                    <span>{q.nama_quality}</span>
+                                    <Download className="w-3.5 h-3.5 text-muted hover:text-primary" />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="px-2.5 py-3 text-center text-xs text-muted">
+                                Kualitas tidak tersedia
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Previous/Next buttons */}
+                {!isFilm && (
+                  <>
+                    <button
+                      disabled={!navigation?.previousEpisode}
+                      onClick={() => navigate(`/watch/${id}/ep/${navigation?.previousEpisode?.nomor_episode}`)}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-bg-base hover:bg-bg-elevated border border-border/60 hover:border-primary/40 text-xs font-bold text-text-primary rounded-xl transition-all disabled:opacity-40 disabled:hover:bg-bg-base disabled:hover:border-border/60 active:scale-95 shadow-sm focus:outline-none"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Sebelumnya</span>
+                    </button>
+                    
+                    <button
+                      disabled={!navigation?.nextEpisode}
+                      onClick={() => navigate(`/watch/${id}/ep/${navigation?.nextEpisode?.nomor_episode}`)}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none"
+                    >
+                      <span>Berikutnya</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Sub-details & badges row */}
@@ -1791,6 +2231,8 @@ export const WatchPage: React.FC = () => {
               )}
             </div>
           </div>
+          </>
+          )}
 
         </div>
 
@@ -1859,7 +2301,7 @@ export const WatchPage: React.FC = () => {
       </div>
 
       {/* Recommended Anime Section below */}
-      {relatedAnimes.length > 0 && (
+      {!isMiniMode && relatedAnimes.length > 0 && (
         <div className="space-y-4 text-left">
           <h3 className="text-lg font-bold font-heading text-text-primary">Rekomendasi Lainnya</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

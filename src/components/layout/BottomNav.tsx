@@ -1,12 +1,15 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Compass, Bookmark, User } from 'lucide-react';
+import { Home, Compass, Heart, User, MessageCircle, Gift, Users } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
   const items = [
     { icon: <Home className="w-5.5 h-5.5" />, label: 'Beranda', path: '/' },
     { icon: <Compass className="w-5.5 h-5.5" />, label: 'Jelajahi', path: '/browse' },
-    { icon: <Bookmark className="w-5.5 h-5.5" />, label: 'Tersimpan', path: '/bookmarks' },
+    { icon: <MessageCircle className="w-5.5 h-5.5" />, label: 'Chat', path: '/global-chat' },
+    { icon: <Users className="w-5.5 h-5.5" />, label: 'Nobar', path: '/watch-party' },
+    { icon: <Gift className="w-5.5 h-5.5" />, label: 'Event', path: '/events' },
+    { icon: <Heart className="w-5.5 h-5.5" />, label: 'Favorit', path: '/favorites' },
     { icon: <User className="w-5.5 h-5.5" />, label: 'Profil', path: '/profile' }
   ];
 
@@ -17,7 +20,7 @@ export const BottomNav: React.FC = () => {
           key={item.label}
           to={item.path}
           className={({ isActive }) => 
-            `flex flex-col items-center justify-center w-16 h-full gap-1 transition-all ${
+            `flex flex-col items-center justify-center flex-1 min-w-0 max-w-[72px] h-full gap-1 transition-all ${
               isActive 
                 ? 'text-primary scale-105 font-semibold' 
                 : 'text-text-secondary hover:text-text-primary'
@@ -25,7 +28,7 @@ export const BottomNav: React.FC = () => {
           }
         >
           <div className="shrink-0">{item.icon}</div>
-          <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
+          <span className="text-[10px] font-medium tracking-wide truncate w-full text-center">{item.label}</span>
         </NavLink>
       ))}
     </nav>

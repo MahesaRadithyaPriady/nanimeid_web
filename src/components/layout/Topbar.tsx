@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, Mic, ArrowLeft, Loader2 } from 'lucide-react';
+import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, Mic, ArrowLeft, Loader2, Heart, Gift, Trophy, Download } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { UserAvatar } from '../ui/UserAvatar';
 import { MOCK_MANGAS } from '../../constants/mockData';
@@ -327,8 +327,27 @@ export const Topbar: React.FC = () => {
             <Search className="w-5 h-5" />
           </button>
 
+          {/* Quick Access Downloads Icon */}
+          <Link
+            to="/downloads"
+            className="p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none shrink-0"
+            aria-label="Unduhan Saya"
+            title="Unduhan Saya"
+          >
+            <Download className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+          </Link>
+
           {isLoggedIn ? (
             <>
+              {/* Events Icon */}
+              <Link
+                to="/events"
+                className="p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+                aria-label="Misi & Event"
+              >
+                <Gift className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+              </Link>
+
               {/* Notification Icon */}
               <button
                 onClick={() => addToast('info', 'Anda tidak memiliki notifikasi baru.')}
@@ -369,14 +388,41 @@ export const Topbar: React.FC = () => {
                       <User className="w-4 h-4 text-muted" />
                       <span>Profil saya</span>
                     </Link>
-                    
+
                     <Link
-                      to="/bookmarks"
+                      to="/downloads"
                       onClick={() => setShowProfileMenu(false)}
                       className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
                     >
-                      <Bell className="w-4 h-4 text-muted" />
-                      <span>Simpanan</span>
+                      <Download className="w-4 h-4 text-muted" />
+                      <span>Unduhan saya</span>
+                    </Link>
+                    
+                    <Link
+                      to="/favorites"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
+                    >
+                      <Heart className="w-4 h-4 text-muted" />
+                      <span>Favorit</span>
+                    </Link>
+                    
+                    <Link
+                      to="/events"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
+                    >
+                      <Gift className="w-4 h-4 text-muted" />
+                      <span>Misi & Event</span>
+                    </Link>
+                    
+                    <Link
+                      to="/leaderboard"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-bg-surface text-sm text-text-primary transition-colors"
+                    >
+                      <Trophy className="w-4 h-4 text-muted" />
+                      <span>Leaderboard</span>
                     </Link>
                     
                     <button
