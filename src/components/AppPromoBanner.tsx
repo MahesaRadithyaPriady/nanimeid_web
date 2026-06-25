@@ -7,7 +7,7 @@ export const AppPromoBanner: React.FC = () => {
   };
 
   const handleDownloadApk = () => {
-    window.open('https://cdn-stable.nanimeid.xyz/file/NanimeID/NanimeID/2.8.0/Rilis/app-release.apk', '_blank');
+    window.open('https://cdn-stable.nanimeid.xyz/file/NanimeID/NanimeID/2.8.0/Rilis/nanimeid-2.8.0.apk', '_blank');
   };
 
   return (
