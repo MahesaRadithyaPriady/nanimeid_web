@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, ArrowLeft, Loader2, Heart, Gift, Trophy, Download, Sun, Moon } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { UserAvatar } from '../ui/UserAvatar';
+import { BorderImage } from '../ui/BorderImage';
 import { resolveSrc } from '../../lib/utils';
 import { fetchLiveSearch } from '../../lib/animeApi';
 
@@ -425,8 +426,8 @@ export const Topbar: React.FC = () => {
                     </div>
                     {/* Border image overlay */}
                     {userProfile.avatarBorderActive && (
-                      <img
-                        src={resolveSrc(userProfile.avatarBorderActive.image_url)}
+                      <BorderImage
+                        src={userProfile.avatarBorderActive.image_url}
                         alt="border"
                         className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
                       />

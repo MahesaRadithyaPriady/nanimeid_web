@@ -117,7 +117,7 @@ const GoogleOAuthButton: React.FC<{
         shape="rectangular"
         size="large"
         text="continue_with"
-        width="336"
+        width="320"
       />
     </div>
   );
@@ -160,7 +160,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-bg-base flex flex-col lg:flex-row overflow-hidden">
+    <div className="min-h-screen bg-bg-base flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden overflow-x-hidden w-full">
 
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* LEFT PANEL — Brand visual (desktop only)                     */}
@@ -215,34 +215,34 @@ export const LoginPage: React.FC = () => {
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* RIGHT PANEL — Login form                                     */}
       {/* ══════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-1 lg:max-w-[520px] xl:max-w-[560px] items-center justify-center px-6 sm:px-10 py-12 relative bg-bg-base">
+      <div className="flex flex-1 lg:max-w-[520px] xl:max-w-[560px] items-center justify-center px-4 sm:px-6 lg:px-10 py-8 sm:py-12 relative bg-bg-base">
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[360px] h-[360px] rounded-full bg-primary/[0.05] blur-[80px] pointer-events-none lg:hidden" />
 
-        <div className="relative z-10 w-full max-w-[400px]">
+        <div className="relative z-10 w-full max-w-[400px] sm:max-w-[380px]">
 
           {/* Mobile logo */}
-          <div className="flex flex-col items-center mb-10 lg:hidden">
-            <div className="w-16 h-16 rounded-2xl bg-primary/ border border-primary/30 flex items-center justify-center shadow-glow mb-4">
-              <img src="/logo.png" alt="NanimeID" className="w-10 h-10 object-contain" />
+          <div className="flex flex-col items-center mb-6 sm:mb-10 lg:hidden">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary/ border border-primary/30 flex items-center justify-center shadow-glow mb-3 sm:mb-4">
+              <img src="/logo.png" alt="NanimeID" className="w-9 h-9 sm:w-10 sm:h-10 object-contain" />
             </div>
-            <span className="font-heading font-black text-3xl tracking-tight">
+            <span className="font-heading font-black text-2xl sm:text-3xl tracking-tight">
               <span className="text-text-primary">NANIME</span><span className="text-primary">ID</span>
             </span>
             <p className="text-muted text-xs mt-1.5 text-center">Portal anime Indonesia</p>
           </div>
 
           {/* Heading */}
-          <div className="mb-8 text-left">
-            <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-text-primary tracking-tight leading-tight mb-2">
+          <div className="mb-6 sm:mb-8 text-left">
+            <h2 className="font-heading font-extrabold text-xl sm:text-2xl lg:text-3xl text-text-primary tracking-tight leading-tight mb-2">
               Selamat Datang
             </h2>
-            <p className="text-text-secondary text-sm leading-relaxed">
+            <p className="text-text-secondary text-xs sm:text-sm leading-relaxed">
               Masuk untuk menyimpan tontonan, melacak riwayat, dan menikmati pengalaman personal.
             </p>
           </div>
 
           {/* Login Card */}
-          <div className="bg-bg-surface border border-border/60 rounded-2xl p-6 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
+          <div className="bg-bg-surface border border-border/60 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.4)]">
 
             {/* Demo mode notice */}
             {!hasClientId && (
@@ -305,7 +305,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Feature chips (mobile only) */}
-          <div className="mt-8 flex flex-wrap justify-center gap-2 lg:hidden">
+          <div className="mt-6 sm:mt-8 flex flex-wrap justify-center gap-2 lg:hidden">
             {['Streaming Gratis', 'Update Mingguan', 'Tanpa Iklan Berlebih'].map((f) => (
               <div key={f} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-bg-surface border border-border/50 text-[11px] text-muted font-medium">
                 <Zap className="w-3 h-3 text-primary shrink-0" />
@@ -315,10 +315,10 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {/* Guest link */}
-          <div className="mt-8 text-center">
+          <div className="mt-6 sm:mt-8 text-center">
             <span className="text-xs text-muted/70">Mau lihat-lihat dulu? </span>
-            <Link to="/" className="text-xs font-semibold text-primary hover:text-primary-light transition-colors underline underline-offset-2">
-              Jelajahi sebagai tamu
+            <Link to="/welcome" className="text-xs font-semibold text-primary hover:text-primary-light transition-colors underline underline-offset-2">
+              Kembali ke Beranda
             </Link>
           </div>
         </div>

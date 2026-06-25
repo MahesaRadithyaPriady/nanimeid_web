@@ -8,6 +8,7 @@ import type { ApiAffinityRecord, AffinityRelationType } from '../types';
 import { Link } from 'react-router-dom';
 import { UserAvatar } from './ui/UserAvatar';
 import { Modal } from './ui/Modal';
+import { resolveSrc } from '../lib/utils';
 
 export const AffinityTab: React.FC = () => {
   const { addToast } = useAppStore();
@@ -227,7 +228,7 @@ export const AffinityTab: React.FC = () => {
               {userProfile?.avatarBorderActive && (
                 <div 
                   className="absolute inset-0 z-20 pointer-events-none bg-cover bg-center scale-[1.2]"
-                  style={{ backgroundImage: `url(${userProfile.avatarBorderActive.image_url})` }}
+                  style={{ backgroundImage: `url(${resolveSrc(userProfile.avatarBorderActive.image_url)})` }}
                 />
               )}
               <UserAvatar src={userProfile?.avatarUrl || ''} name={userProfile?.name || ''} className="w-full h-full rounded-full" />

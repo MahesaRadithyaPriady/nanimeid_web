@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { resolveSrc } from '../lib/utils';
 import { 
   fetchPublicProfile, 
   fetchProfileComments, 
@@ -182,7 +183,7 @@ export const UserProfilePage: React.FC = () => {
             {profile.avatar_border_active ? (
               <div 
                 className="absolute inset-0 z-10 pointer-events-none bg-cover bg-center"
-                style={{ backgroundImage: `url(${profile.avatar_border_active.image_url})` }}
+                style={{ backgroundImage: `url(${resolveSrc(profile.avatar_border_active.image_url)})` }}
               />
             ) : null}
             <UserAvatar

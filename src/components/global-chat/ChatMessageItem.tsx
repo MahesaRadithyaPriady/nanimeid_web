@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { Reply, Trash2, Image as ImageIcon, PlayCircle } from 'lucide-react';
 import type { ChatMessage, ChatParent } from '../../stores/useGlobalChatStore';
 import { Link } from 'react-router-dom';
+import { BorderImage } from '../ui/BorderImage';
 
 function getStickerUrl(content?: string): string {
   if (!content) return '';
@@ -93,7 +94,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
             </div>
             {/* Border image */}
             {avatarBorderUrl && (
-              <img src={avatarBorderUrl} alt="border" className="absolute -inset-1.5 w-[calc(100%+12px)] max-w-none h-[calc(100%+12px)] object-cover pointer-events-none z-10" />
+              <BorderImage src={avatarBorderUrl} alt="border" className="absolute -inset-1.5 w-[calc(100%+12px)] max-w-none h-[calc(100%+12px)] object-cover pointer-events-none z-10" />
             )}
           </div>
         </div>

@@ -11,6 +11,7 @@ import {
   disableActiveAvatarBorder,
   checkAvatarBorderVipEligibility,
 } from '../../lib/avatarBorderApi';
+import { BorderImage } from '../ui/BorderImage';
 import type {
   ApiUserAvatarBorder,
   AvatarBorderTier,
@@ -102,7 +103,7 @@ export const AvatarBorderTab: React.FC = () => {
       {active && (
         <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl p-3">
           <div className="flex items-center gap-3">
-            <img src={resolveSrc(active.image_url)} alt={active.title} className="w-12 h-12 rounded-lg object-cover border border-white/20" />
+            <BorderImage src={active.image_url} alt={active.title} className="w-12 h-12 rounded-lg object-cover border border-white/20" />
             <div>
               <p className="text-sm font-bold text-text-primary">{active.title}</p>
               <p className="text-xs text-purple-400">Border aktif</p>
@@ -132,8 +133,8 @@ export const AvatarBorderTab: React.FC = () => {
                   <span className="text-2xl font-black text-text-secondary select-none">A</span>
                 </div>
                 {/* Border image — full size, layered on top */}
-                <img
-                  src={resolveSrc(border.image_url)}
+                <BorderImage
+                  src={border.image_url}
                   alt={border.title}
                   className="absolute inset-0 w-full h-full object-contain z-20"
                 />

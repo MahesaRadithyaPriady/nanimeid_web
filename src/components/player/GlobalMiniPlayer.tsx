@@ -34,6 +34,8 @@ export const GlobalMiniPlayer: React.FC = () => {
     video.className = "w-full h-full object-cover";
     video.playsInline = true;
     video.controls = false;
+    video.preload = 'auto';
+    video.autoplay = true;
     video.id = "global-video-element"; // Help WatchPage find it if needed
     // Nonaktifkan PiP bawaan browser
     (video as any).disablePictureInPicture = true;
@@ -136,6 +138,16 @@ export const GlobalMiniPlayer: React.FC = () => {
           enableWorker: true,
           lowLatencyMode: true,
           loader: FetchLoader,
+          startLevel: -1,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 30,
+          maxBufferSize: 60 * 1000 * 1000,
+          maxBufferHole: 0.5,
+          startFragPrefetch: true,
+          testBandwidth: false,
+          abrEwmaDefaultEstimate: 1_000_000,
+          abrBandWidthFactor: 4,
+          abrBandWidthUpFactor: 4,
         });
         hlsRef.current.attachMedia(video);
       }
@@ -177,15 +189,20 @@ export const GlobalMiniPlayer: React.FC = () => {
     const onTimeUpdate = () => updateTime(video.currentTime);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onLoadedData = () => {
+      video.play().catch(() => {});
+    };
 
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('loadeddata', onLoadedData);
 
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('loadeddata', onLoadedData);
     };
   }, [updateTime, setIsPlaying]);
 
@@ -262,7 +279,7 @@ export const GlobalMiniPlayer: React.FC = () => {
     <div id="global-mini-player-root" className="contents">
       <div className={!isMiniMode ? "hidden" : ""}>
         <div 
-          className="fixed bottom-6 right-6 w-[320px] sm:w-[400px] aspect-video z-[9999] shadow-2xl rounded-2xl overflow-hidden bg-black border border-border/40 transition-all duration-300"
+          className="fixed bottom-3 right-3 w-[180px] sm:w-[400px] aspect-video z-[9999] shadow-2xl rounded-xl sm:rounded-2xl overflow-hidden bg-black border border-border/40 transition-all duration-300"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
@@ -271,34 +288,34 @@ export const GlobalMiniPlayer: React.FC = () => {
           
           {/* Overlay controls for Mini Player */}
           {isMiniMode && isHovered && (
-            <div className="absolute inset-0 bg-black/60 z-50 flex flex-col justify-between p-3 transition-opacity">
+            <div className="absolute inset-0 bg-black/60 z-50 flex flex-col justify-between p-2 sm:p-3 transition-opacity">
               <div className="flex justify-between items-start">
-                <div className="text-white text-xs font-medium truncate max-w-[70%]">
+                <div className="text-white text-[10px] sm:text-xs font-medium truncate max-w-[65%] sm:max-w-[70%]">
                   {currentAnime?.nama_anime} - Ep {currentEpNum}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2">
                   <button 
                     onClick={handleExpand}
-                    className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-lg backdrop-blur-sm transition-all"
+                    className="p-1 sm:p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-lg backdrop-blur-sm transition-all"
                     title="Expand"
                   >
-                    <Maximize2 className="w-3.5 h-3.5" />
+                    <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </button>
                   <button 
                     onClick={handleClose}
-                    className="p-1.5 bg-white/20 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-sm transition-all"
+                    className="p-1 sm:p-1.5 bg-white/20 hover:bg-red-500/80 text-white rounded-lg backdrop-blur-sm transition-all"
                     title="Close"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </button>
                 </div>
               </div>
-              <div className="flex justify-center items-center h-full pb-6">
+              <div className="flex justify-center items-center h-full pb-4 sm:pb-6">
                 <button 
                   onClick={togglePlay}
-                  className="p-3 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-sm transition-all"
+                  className="p-2 sm:p-3 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-sm transition-all"
                 >
-                  {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+                  {isPlaying ? <Pause className="w-4 h-4 sm:w-6 sm:h-6" /> : <Play className="w-4 h-4 sm:w-6 sm:h-6 ml-0.5 sm:ml-1" />}
                 </button>
               </div>
             </div>

@@ -29,5 +29,11 @@ export const resolveSrc = (src?: string | null) => {
     resolvedUrl = `${cleanBase}${cleanPath}`;
   }
 
+  // Normalize old CDN bucket path: NanimeID-Storage → storage-nanimeid
+  resolvedUrl = resolvedUrl.replace(
+    '/file/NanimeID-Storage/',
+    '/file/storage-nanimeid/'
+  );
+
   return resolvedUrl;
 };

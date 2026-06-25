@@ -64,40 +64,40 @@ export const BottomNav: React.FC = () => {
       )}
 
       {/* "More" Menu Popup */}
-      <div className={`fixed bottom-16 left-0 right-0 bg-bg-elevated border-t border-border/50 rounded-t-3xl z-30 lg:hidden transition-transform duration-300 ease-out max-h-[80vh] overflow-y-auto ${showMore ? 'translate-y-0' : 'translate-y-full'}`}>
-        <div className="p-4 pb-8">
+      <div className={`fixed bottom-16 left-0 right-0 bg-bg-elevated border-t border-border/50 rounded-t-3xl z-30 lg:hidden transition-transform duration-300 ease-out max-h-[70vh] overflow-y-auto ${showMore ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className="p-3 pb-4">
           {/* Handle bar */}
-          <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-4" />
+          <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-3" />
 
           {/* Header */}
-          <h3 className="text-text-primary font-bold mb-5 px-1 flex justify-between items-center">
+          <h3 className="text-text-primary font-bold mb-3 px-1 flex justify-between items-center text-sm">
             Menu Lengkap
             <button onClick={() => setShowMore(false)} className="p-1.5 hover:bg-bg-surface rounded-full transition-colors">
-              <X className="w-5 h-5 text-text-muted" />
+              <X className="w-4 h-4 text-text-muted" />
             </button>
           </h3>
 
           {/* Grouped items */}
-          <div className="space-y-5">
+          <div className="space-y-3">
             {moreGroups.map((group) => (
               <div key={group.label}>
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest px-1 mb-2">{group.label}</p>
-                <div className="grid grid-cols-4 gap-y-3 gap-x-2">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-widest px-1 mb-1.5">{group.label}</p>
+                <div className="grid grid-cols-4 gap-y-2 gap-x-1">
                   {group.items.map((item) => (
                     <NavLink
                       key={item.label}
                       to={item.path}
                       onClick={() => setShowMore(false)}
                       className={({ isActive }) =>
-                        `flex flex-col items-center gap-1.5 p-2 rounded-xl transition-colors ${
+                        `flex flex-col items-center gap-1 p-1.5 rounded-xl transition-colors ${
                           isActive ? 'bg-primary/10' : 'hover:bg-bg-surface'
                         }`
                       }
                     >
-                      <div className="w-11 h-11 rounded-full bg-bg-surface border border-border/50 flex items-center justify-center shadow-sm">
+                      <div className="w-9 h-9 rounded-full bg-bg-surface border border-border/50 flex items-center justify-center shadow-sm">
                         {item.icon}
                       </div>
-                      <span className="text-[10px] font-medium text-center leading-tight text-text-secondary">{item.label}</span>
+                      <span className="text-[9px] font-medium text-center leading-tight text-text-secondary">{item.label}</span>
                     </NavLink>
                   ))}
                 </div>

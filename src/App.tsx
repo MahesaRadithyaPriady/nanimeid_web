@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { PageLayout } from './components/layout/PageLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AuthGate } from './components/AuthGate';
 import { LoginPage } from './pages/LoginPage';
+import { WelcomePage } from './pages/WelcomePage';
 import { HomePage } from './pages/HomePage';
 import { BrowsePage } from './pages/BrowsePage';
 import { AnimePage } from './pages/AnimePage';
@@ -40,30 +42,11 @@ function ScrollToTop() {
   return null;
 }
 
-function OfflineInterceptor({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    const handleOffline = () => {
-      if (!location.pathname.includes('/downloads') && !location.pathname.includes('/watch')) {
-        navigate('/downloads', { replace: true });
-      }
-    };
-
-    window.addEventListener('offline', handleOffline);
-
-    // Initial check
-    if (!navigator.onLine && !location.pathname.includes('/downloads') && !location.pathname.includes('/watch')) {
-      navigate('/downloads', { replace: true });
-    }
-
-    return () => {
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [navigate, location.pathname]);
-
-  return <>{children}</>;
+function ConditionalBanner() {
+  const { pathname } = useLocation();
+  const hideOn = ['/welcome', '/login'];
+  if (hideOn.includes(pathname)) return null;
+  return <AppPromoBanner />;
 }
 
 function App() {
@@ -91,48 +74,49 @@ function App() {
     <Router>
       <ScrollToTop />
       <GlobalMiniPlayer />
-      <AppPromoBanner />
-      <OfflineInterceptor>
-        <Routes>
-          {/* Auth pages — no layout shell */}
+      <ConditionalBanner />
+      <Routes>
+        {/* Welcome & Login pages — no auth required */}
+        <Route path="/welcome" element={<WelcomePage />} />
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Main layout shell — accessible by guests */}
-        <Route path="/" element={<PageLayout />}>
-          {/* ── Public routes (guest + logged-in) ── */}
-          <Route index element={<HomePage />} />
-          <Route path="browse" element={<BrowsePage />} />
-          <Route path="catalog" element={<CatalogPage />} />
-          <Route path="schedule" element={<SchedulePage />} />
-          <Route path="genres" element={<GenresPage />} />
-          <Route path="waifu-vote" element={<WaifuVotePage />} />
-          <Route path="store" element={<StorePage />} />
-          <Route path="vip" element={<VipCatalogPage />} />
-          <Route path="anime" element={<AnimePage />} />
-          <Route path="search" element={<SearchPage />} />
-          <Route path="anime/:id" element={<AnimeDetailPage />} />
-          <Route path="watch/:id/ep/:episodeNumber" element={<WatchPage />} />
-          <Route path="user/:userId" element={<UserProfilePage />} />
-          <Route path="global-chat" element={<GlobalChatPage />} />
-          <Route path="leaderboard" element={<LeaderboardPage />} />
-          <Route path="downloads" element={<DownloadsPage />} />
-          <Route path="watch-party" element={<WatchPartyLobby />} />
-          <Route path="watch-party/:code" element={null} />
+        {/* All other routes require auth */}
+        <Route element={<AuthGate />}>
+          <Route path="/" element={<PageLayout />}>
+            {/* ── General routes (logged in) ── */}
+            <Route index element={<HomePage />} />
+            <Route path="browse" element={<BrowsePage />} />
+            <Route path="catalog" element={<CatalogPage />} />
+            <Route path="schedule" element={<SchedulePage />} />
+            <Route path="genres" element={<GenresPage />} />
+            <Route path="waifu-vote" element={<WaifuVotePage />} />
+            <Route path="store" element={<StorePage />} />
+            <Route path="vip" element={<VipCatalogPage />} />
+            <Route path="anime" element={<AnimePage />} />
+            <Route path="search" element={<SearchPage />} />
+            <Route path="anime/:id" element={<AnimeDetailPage />} />
+            <Route path="watch/:id/ep/:episodeNumber" element={<WatchPage />} />
+            <Route path="user/:userId" element={<UserProfilePage />} />
+            <Route path="global-chat" element={<GlobalChatPage />} />
+            <Route path="leaderboard" element={<LeaderboardPage />} />
+            <Route path="downloads" element={<DownloadsPage />} />
+            <Route path="watch-party" element={<WatchPartyLobby />} />
+            <Route path="watch-party/:code" element={null} />
 
-          {/* ── Protected routes — require login ── */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="favorites" element={<FavoritesPage />} />
-            <Route path="history" element={<HistoryPage />} />
-            <Route path="events" element={<EventsPage />} />
-            <Route path="profile" element={<ProfilePage />} />
-            <Route path="collection" element={<CollectionPage />} />
+            {/* ── Protected routes — require login (extra layer) ── */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="favorites" element={<FavoritesPage />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="events" element={<EventsPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="collection" element={<CollectionPage />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-      </OfflineInterceptor>
     </Router>
   );
 }

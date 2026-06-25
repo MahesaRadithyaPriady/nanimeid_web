@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../stores/useAppStore';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { BorderImage } from '../components/ui/BorderImage';
 import { resolveSrc } from '../lib/utils';
 import { VipTab } from '../components/VipTab';
 import { AffinityTab } from '../components/AffinityTab';
@@ -351,8 +352,8 @@ export const ProfilePage: React.FC = () => {
             </div>
             {/* Border image — rendered outside/on-top, full size of wrapper */}
             {userProfile.avatarBorderActive && (
-              <img
-                src={resolveSrc(userProfile.avatarBorderActive.image_url)}
+              <BorderImage
+                src={userProfile.avatarBorderActive.image_url}
                 alt="avatar border"
                 className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
               />

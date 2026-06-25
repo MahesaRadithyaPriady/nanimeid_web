@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { BorderImage } from '../components/ui/BorderImage';
 import { resolveSrc } from '../lib/utils';
 import { getWallet, earnCoins, getStoreItems, getCoinPacks, purchaseVip, purchaseBadge, getUserBadges, activateBadge, deactivateBadge, getSuperbadges, activateSuperbadge, deactivateSuperbadge, getStickers, purchaseSticker, getCoinTransactions, getCashoutRequests, requestCashout, getStoreBorders, purchaseStoreBorder, getQrisLogo, createQrisRequest, uploadQrisProof, getQrisRequests } from '../lib/storeApi';
 import type { ApiStoreItem, ApiUserWallet, ApiUserBadge, ApiUserSuperBadge, ApiSticker, ApiSuperBadgeCatalog, ApiCoinTransaction, ApiCashoutRequest, ApiQrisInfo, ApiQrisRequest } from '../types';
@@ -440,8 +441,8 @@ const ShopTab: React.FC = () => {
                     {userPreview?.avatar_url && (
                       <img src={resolveSrc(userPreview.avatar_url)} alt="Avatar" className="w-[65%] h-[65%] rounded-full object-cover z-0" />
                     )}
-                    <img 
-                      src={resolveSrc(border.image_url)} 
+                    <BorderImage 
+                      src={border.image_url} 
                       alt={border.title} 
                       className="absolute inset-0 w-full h-full object-cover z-10"
                     />

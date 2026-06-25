@@ -571,6 +571,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
   };
 
   const controlsTimeoutRef = useRef<any | null>(null);
+  const tapTimeoutRef = useRef<any | null>(null);
   // 1. Load Full Anime details on ID change (for sidebar episodes list & base metadata)
   useEffect(() => {
     if (!id) return;
@@ -787,12 +788,12 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
     loadEpisode();
   }, [id, currentEpNum, episodes]);
 
-  // Safety timeout: if buffering doesn't clear within 15s, force-clear it
+  // Safety timeout: if buffering doesn't clear within 8s, force-clear it
   useEffect(() => {
     if (!currentEpisode?.id) return;
     const timeout = window.setTimeout(() => {
       setIsBuffering(false);
-    }, 15000);
+    }, 8000);
     return () => window.clearTimeout(timeout);
   }, [currentEpisode?.id]);
 
@@ -993,7 +994,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
         bufferWatchdogRef.current = null;
       }
       advanceToFallbackSource('Loading terlalu lama, mencoba sumber lain...');
-    }, 12000);
+    }, 8000);
 
     return () => {
       if (bufferWatchdogRef.current) {
@@ -1131,8 +1132,6 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
           toggleFullscreen();
           break;
         case 'p':
-          e.preventDefault();
-          toggleMiniPlayer();
           break;
         case 'm':
           e.preventDefault();
@@ -1162,9 +1161,37 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
     }, 3000);
   };
 
+  // Single tap = toggle controls, Double tap = play/pause
+  const handleVideoTap = () => {
+    if (tapTimeoutRef.current) {
+      // Second tap within window → double tap = play/pause
+      clearTimeout(tapTimeoutRef.current);
+      tapTimeoutRef.current = null;
+      togglePlay();
+    } else {
+      // First tap → wait to see if double tap follows
+      tapTimeoutRef.current = setTimeout(() => {
+        // Single tap = toggle controls
+        tapTimeoutRef.current = null;
+        setShowControls(prev => {
+          const next = !prev;
+          if (next && isPlaying) {
+            // Auto-hide after 3s if playing
+            if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+            controlsTimeoutRef.current = setTimeout(() => {
+              setShowControls(false);
+            }, 3000);
+          }
+          return next;
+        });
+      }, 250);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
     };
   }, [isPlaying]);
 
@@ -1306,42 +1333,41 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
     if (!document.fullscreenElement) {
       playerContainerRef.current.requestFullscreen().then(() => {
         setIsFullscreen(true);
+        // Auto-rotate to landscape on mobile when entering fullscreen
+        const so = screen.orientation as any;
+        if (so && so.lock) {
+          so.lock('landscape').catch(() => {});
+        }
       }).catch(() => {
         console.error('Gagal masuk ke mode Fullscreen');
       });
     } else {
       document.exitFullscreen();
       setIsFullscreen(false);
-    }
-  };
-
-  const toggleMiniPlayer = () => {
-    const state = usePlayerStore.getState();
-    if (state.isActive && state.isMiniMode) {
-      // Return to full player
-      state.setIsMiniMode(false);
-      navigate(`/watch/${state.currentAnime?.id}/ep/${state.currentEpNum}`);
-    } else if (state.isActive && !state.isMiniMode) {
-      // Jika fullscreen, keluar dulu
-      if (document.fullscreenElement) {
-        document.exitFullscreen().then(() => {
-          state.setIsMiniMode(true);
-          navigate('/');
-        }).catch(() => {
-          state.setIsMiniMode(true);
-          navigate('/');
-        });
-      } else {
-        // Go to mini player
-        state.setIsMiniMode(true);
-        navigate('/');
+      // Unlock orientation when exiting fullscreen
+      const so = screen.orientation as any;
+      if (so && so.unlock) {
+        so.unlock();
       }
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement !== null);
+      const isFs = document.fullscreenElement !== null;
+      setIsFullscreen(isFs);
+      // Auto-rotate: lock landscape on enter, unlock on exit
+      if (isFs) {
+        const so = screen.orientation as any;
+        if (so && so.lock) {
+          so.lock('landscape').catch(() => {});
+        }
+      } else {
+        const so = screen.orientation as any;
+        if (so && so.unlock) {
+          so.unlock();
+        }
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -1503,26 +1529,28 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
 
 
 
-  // Only show skeleton on initial load (no anime data yet)
-  if (isLoading && !anime) {
+  // Always show skeleton when anime is not loaded yet and no error
+  if (!anime && !error) {
     return <WatchPageSkeleton />;
   }
 
-  // Show skeleton when anime exists but episode is still loading on first visit
-  if (isLoading && anime && !currentEpisode) {
+  // Show skeleton when anime exists but episode is still loading
+  if (anime && !currentEpisode && !error) {
     return <WatchPageSkeleton />;
   }
 
-  if (error || !anime) {
+  if (error && !isLoading) {
     return (
       <div className="py-24 text-center">
-        <h2 className="text-xl font-bold">{error || 'Episode tidak ditemukan!'}</h2>
+        <h2 className="text-xl font-bold">{error}</h2>
         <Link to="/" className="text-primary hover:underline">Kembali ke Beranda</Link>
       </div>
     );
   }
 
-  const isFilm = anime?.content_type === 'FILM';
+  // After guards, anime is guaranteed non-null
+  const animeData = anime!;
+  const isFilm = animeData?.content_type === 'FILM';
 
   return (
     <div className="pb-16 space-y-6">
@@ -1559,7 +1587,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
             {floatingXp && (
               <div 
                 key={floatingXp.id}
-                className="absolute top-6 right-6 z-50 animate-float-up pointer-events-none"
+                className="absolute top-6 right-6 z-20 animate-float-up pointer-events-none"
               >
                 <div className="bg-yellow-500 text-white font-bold px-4 py-2 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] border border-yellow-400/50 flex items-center gap-2">
                   <Star className="w-4 h-4 fill-white" />
@@ -1570,7 +1598,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
 
             {/* Episode Switch / Buffering Overlay — jangan tampil jika video sudah playing (kembali dari mini) */}
             {((isLoading && !!anime) || (isBuffering && !!currentEpisode && !isChangingQuality && !isPlaying)) && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
                 <Loader2 className="w-10 h-10 animate-spin text-primary mb-3" />
                 <p className="text-sm font-medium animate-pulse text-white tracking-widest">
                   {isLoading ? `MEMUAT EPISODE ${currentEpNum}...` : 'MEMUAT...'}
@@ -1584,7 +1612,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
               className={`w-full h-full flex items-center justify-center cursor-pointer ${
                 (isLoginRestricted || isVipRestricted || isSourceNotFound) ? 'opacity-0 pointer-events-none' : 'opacity-100'
               }`}
-              onClick={togglePlay}
+              onClick={handleVideoTap}
               onDoubleClick={toggleFullscreen}
             />
 
@@ -1594,7 +1622,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                 className={`absolute inset-0 z-10 flex flex-col justify-between transition-opacity duration-300 ${
                   showControls || !isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}
-                onClick={togglePlay}
+                onClick={handleVideoTap}
                 onDoubleClick={toggleFullscreen}
               >
                 {/* Top bar (Minimalist Header) */}
@@ -1846,17 +1874,6 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                         )}
                       </div>
 
-                      {/* Mini Player Button */}
-                      <button 
-                        onClick={toggleMiniPlayer}
-                        className="text-white transition-all duration-200 focus:outline-none p-1 cursor-pointer active:scale-90"
-                        title="Mini Player (P)"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H11V15H19V11ZM21 19H3C1.89543 19 1 18.1046 1 17V7C1 5.89543 1.89543 5 3 5H21C22.1046 5 23 5.89543 23 7V17C23 18.1046 22.1046 19 21 19ZM21 17V7H3V17H21Z" />
-                        </svg>
-                      </button>
-
                       {/* Fullscreen Button */}
                       <button 
                         onClick={toggleFullscreen}
@@ -1875,13 +1892,6 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                   </div>
 
                 </div>
-              </div>
-            )}
-
-            {/* Glowing Buffering/Loading Spinner Overlay */}
-            {!isLoginRestricted && !isVipRestricted && !isSourceNotFound && (isBuffering || isChangingQuality) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20 pointer-events-none transition-all duration-300">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
 
@@ -2009,7 +2019,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
               <div className="space-y-1.5 flex-1 min-w-0">
                 <span className="text-[10px] font-bold text-pink-600 dark:text-primary uppercase tracking-widest font-mono">Sedang Diputar</span>
                 <h1 className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight tracking-tight">
-                  {anime.nama_anime}
+                  {animeData.nama_anime}
                 </h1>
                 <div className="flex items-center gap-2 text-sm text-text-secondary mt-1">
                   <span className="bg-primary/10 dark:bg-primary/20 text-pink-700 dark:text-primary-light font-mono font-bold text-xs px-2 py-0.5 rounded border border-primary/20 whitespace-nowrap">
@@ -2141,14 +2151,14 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-secondary">
                 <div className="flex items-center gap-1 text-yellow-400 font-bold bg-yellow-400/10 px-2 py-0.5 rounded-md border border-yellow-400/20">
                   <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
-                  <span className="font-mono text-text-primary">{(anime.rating_anime ?? 0).toFixed(1)}</span>
+                  <span className="font-mono text-text-primary">{(animeData.rating_anime ?? 0).toFixed(1)}</span>
                 </div>
                 <div className="text-xs">
-                  Studio: <span className="text-text-primary font-semibold">{(anime.studio_anime ?? []).join(', ') || '-'}</span>
+                  Studio: <span className="text-text-primary font-semibold">{(animeData.studio_anime ?? []).join(', ') || '-'}</span>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-white/10 hidden sm:block" />
                 <div className="text-xs uppercase">
-                  Tipe: <span className="text-text-primary font-semibold">{anime.label_anime ?? anime.content_type ?? 'ANIME'}</span>
+                  Tipe: <span className="text-text-primary font-semibold">{animeData.label_anime ?? animeData.content_type ?? 'ANIME'}</span>
                 </div>
               </div>
 
@@ -2167,6 +2177,29 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
 
             </div>
           </div>
+
+          {/* Mobile Episode Selector — above comments for easy access */}
+          {!isFilm && episodes && episodes.length > 0 && (
+            <div className="lg:hidden bg-bg-surface border border-border/40 rounded-2xl p-4 text-left">
+              <label className="text-xs font-bold text-text-secondary tracking-wide block mb-2">
+                Episode ({currentEpNum} dari {episodes.length})
+              </label>
+              <select
+                value={currentEpNum}
+                onChange={(e) => navigate(`/watch/${id}/ep/${e.target.value}`)}
+                className="w-full bg-bg-elevated border border-border/40 rounded-xl px-3 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:border-primary cursor-pointer"
+              >
+                {episodes
+                  .slice()
+                  .sort((a, b) => a.nomor_episode - b.nomor_episode)
+                  .map((ep) => (
+                    <option key={ep.id} value={ep.nomor_episode}>
+                      EP {ep.nomor_episode} — {ep.judul_episode}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           {/* Comments Section */}
           <div className="bg-bg-surface border border-border/40 rounded-2xl p-6 text-left space-y-6">
@@ -2444,12 +2477,12 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
 
         </div>
 
-        {/* Right Area (Sidebar): Episode List */}
+        {/* Right Area (Sidebar): Episode List — desktop only, mobile uses select dropdown */}
         {!isFilm && (
-          <div className="space-y-6 animate-fade-in-up bg-bg-surface border border-border/40 rounded-2xl p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-hidden flex flex-col text-left">
+          <div className="hidden lg:block space-y-6 animate-fade-in-up bg-bg-surface border border-border/40 rounded-2xl p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-hidden flex flex-col text-left">
             <div className="pb-3 border-b border-border/50 mb-3 shrink-0">
               <h3 className="text-sm font-bold text-text-primary tracking-wide">
-                Episode {anime.nama_anime}
+                Episode {animeData.nama_anime}
               </h3>
               <p className="text-[10.5px] text-muted mt-0.5 font-medium">Memutar {currentEpNum} dari {episodes?.length || 0} episode</p>
             </div>
@@ -2458,7 +2491,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-pink">
               {episodes?.map((ep) => {
                 // Find progress
-                const hist = watchHistory?.find(h => h.animeId === String(anime.id) && h.episodeNumber === ep.nomor_episode);
+                const hist = watchHistory?.find(h => h.animeId === String(animeData.id) && h.episodeNumber === ep.nomor_episode);
                 const prog = hist ? hist.progress : 0;
                 const active = currentEpNum === ep.nomor_episode;
 
