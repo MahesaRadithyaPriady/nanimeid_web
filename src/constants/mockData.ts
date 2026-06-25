@@ -1,4 +1,4 @@
-import type { Anime, Episode, Manga, Comment } from '../types';
+import type { Anime, Episode, Comment } from '../types';
 
 export const GENRES = [
   'Semua',
@@ -23,11 +23,5 @@ export const generateEpisodesForAnime = (animeId: string, count: number): Episod
 };
 
 export const MOCK_EPISODES: Record<string, Episode[]> = {};
-
-export const MOCK_MANGAS: Manga[] = [];
-
-export const generateMangaPages = (chapterNum: number): string[] => {
-  return [];
-};
 
 export const MOCK_COMMENTS: Comment[] = [];

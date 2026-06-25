@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       devOptions: {
-        enabled: true
+        enabled: false
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
@@ -42,6 +42,16 @@ export default defineConfig({
     allowedHosts: true,
     host: 'localhost',
     port: 3001,
+    proxy: {
+      '/cdn-proxy': {
+        target: 'https://cdn-stable.nanimeid.xyz',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/cdn-proxy/, '')
+      }
+    }
+  },
+  preview: {
+    port: 4173,
     proxy: {
       '/cdn-proxy': {
         target: 'https://cdn-stable.nanimeid.xyz',

@@ -27,36 +27,10 @@ export interface Episode {
   thumbnailUrl: string;
 }
 
-export interface Chapter {
-  id: string;
-  mangaId: string;
-  chapterNumber: number;
-  title: string;
-  releaseDate: string;
-  pages: string[]; // URLs or placeholders for pages
-}
-
-export interface Manga {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  type: 'manga' | 'manhwa' | 'manhua';
-  status: 'ongoing' | 'completed';
-  rating: number;
-  chapterCount: number;
-  genres: string[];
-  coverUrl: string; // Vertical/portrait ratio
-  bannerUrl: string; // Horizontal banner ratio
-  author: string;
-  releaseDate: string;
-  chapters: Chapter[];
-}
-
 export interface Bookmark {
   id: string;
-  itemId: string; // animeId or mangaId
-  itemType: 'anime' | 'manga';
+  itemId: string;
+  itemType: 'anime';
   title: string;
   slug: string;
   coverUrl: string;
@@ -406,6 +380,41 @@ export interface ApiUserProfile {
   comment_background?: {
     url: string;
   } | null;
+  affinity_summary?: ApiAffinitySummary | null;
+}
+
+/* ─── Affinity API Interfaces ─── */
+
+export type AffinityRelationType = 'PACAR' | 'SAHABAT' | 'TEMAN';
+export type AffinityStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELED';
+
+export interface ApiAffinityUser {
+  id: number;
+  username: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  avatar_border_active_url: string | null;
+  super_badge_active_url: string | null;
+}
+
+export interface ApiAffinityRecord {
+  id: number;
+  relation_type: AffinityRelationType;
+  status: AffinityStatus;
+  user: ApiAffinityUser;
+  target_user: ApiAffinityUser;
+  is_mutual?: boolean;
+  requested_at: string;
+  responded_at: string | null;
+  createdAt: string;
+}
+
+export interface ApiAffinitySummary {
+  total: number;
+  pacar: number;
+  sahabat: number;
+  teman: number;
+  is_in_relationship: boolean;
 }
 
 export interface ApiUserSearchItem {
@@ -573,3 +582,338 @@ export interface ApiProfileStreak {
   last_sign_in?: string | null;
 }
 
+export interface ApiCollectionPointsSummary {
+  user: {
+    id: number;
+    username: string;
+    createdAt?: string;
+  };
+  profile: {
+    id: number;
+    user_id: number;
+    full_name: string | null;
+    avatar_url: string | null;
+    banner_url: string | null;
+  };
+  total_poin_collection: number;
+  breakdown: {
+    avatar_borders: { count: number; points: number };
+    super_badges: { count: number; points: number };
+    stickers: { count: number; points: number };
+  };
+}
+
+export interface ApiCollectionLeaderboardItem {
+  rank: number;
+  user: {
+    id: number;
+    userID?: string;
+    username: string;
+    createdAt?: string;
+    activeAvatarBorder?: any;
+    vip?: any;
+    avatarUrl?: string;
+    fullName?: string;
+  };
+  profile: {
+    id: number;
+    user_id: number;
+    full_name: string | null;
+    avatar_url: string | null;
+  };
+  total_poin_collection: number;
+  breakdown: {
+    avatar_borders: { count: number; points: number };
+    super_badges: { count: number; points: number };
+    stickers: { count: number; points: number };
+  };
+}
+
+export interface ApiWaifu {
+  id: number;
+  name: string;
+  anime_title: string;
+  image_url: string;
+  description: string;
+  total_votes: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiWaifuVoteCooldownResponse {
+  can_vote: boolean;
+  nextAllowedAt: string | null;
+  user: {
+    can_vote: boolean;
+    nextAllowedAt: string | null;
+    last_waifu_id: number | null;
+  };
+  device: {
+    can_vote: boolean;
+    nextAllowedAt: string | null;
+    last_waifu_id: number | null;
+    last_user_id: number | null;
+  };
+}
+
+export interface ApiStoreItem {
+  id: number;
+  sku: string;
+  title: string;
+  description?: string;
+  coin_price: number;
+  coin_amount?: number;
+  vip_days?: number;
+  badge_name?: string;
+  badge_icon?: string;
+  badge_id?: number;
+  sticker_id?: number;
+  item_type: 'VIP' | 'BADGE' | 'SUPERBADGE' | 'STICKER' | 'COIN' | 'BORDER';
+  is_active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiUserWallet {
+  id: number;
+  user_id: number;
+  balance_coins: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiUserBadge {
+  id: number;
+  user_id: number;
+  badge_name: string;
+  badge_icon?: string;
+  title_color?: string;
+  is_active: boolean;
+  obtained_at: string;
+}
+
+export interface ApiUserSuperBadge {
+  id: number;
+  user_id: number;
+  badge_id: number;
+  badge_name: string;
+  badge_icon?: string;
+  title_color?: string;
+  is_active: boolean;
+  obtained_at: string;
+  expires_at?: string;
+  badge?: {
+    id: number;
+    code: string;
+    name: string;
+    badge_url: string;
+    width: number;
+    height: number;
+  };
+}
+
+export interface ApiCoinTransaction {
+  id: number;
+  user_id: number;
+  type: 'EARN' | 'SPEND' | 'ADJUST';
+  amount: number;
+  ref?: string;
+  createdAt: string;
+}
+
+export interface ApiCashoutRequest {
+  id: number;
+  user_id: number;
+  coins: number;
+  amount_money: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  payout_method?: string;
+  payout_address?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+
+export interface ApiSuperBadgeCatalog {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  badge_url: string;
+  width?: number;
+  height?: number;
+  is_active_catalog: boolean;
+  is_owned: boolean;
+  is_active: boolean;
+  obtained_at?: string;
+  expires_at?: string;
+}
+
+export interface ApiVipPlan {
+  id: number;
+  name: string;
+  description?: string;
+  benefits?: string[];
+  price_coins: number;
+  duration_days?: number;
+  color?: string;
+  is_active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiVipDetail {
+  user_id: number;
+  vip_level: string;
+  start_at?: string;
+  end_at: string;
+  auto_renew?: boolean;
+  payment_method?: string;
+  last_payment_at?: string;
+  status: string; // ACTIVE, dll.
+  notes?: string;
+}
+
+export interface ApiVipHistory {
+  id: number;
+  action: string; // ACTIVATE, RENEW, CANCEL
+  duration_days: number;
+  payment_method: string;
+  coins_spent?: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface VipVoucherApplied {
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+}
+
+export interface ApiVipRenewPriceResponse {
+  plan: ApiVipPlan;
+  voucher_applied: VipVoucherApplied | null;
+  final_price_coins: number;
+  wallet: { balance_coins: number };
+  canAfford: boolean;
+}
+
+export interface ApiQrisInfo {
+  logoUrl: string;
+  processingTimeHours: number;
+  note: string;
+}
+
+export interface ApiQrisRequest {
+  id: number;
+  user_id: number;
+  amount_coins: number;
+  payment_method: string;
+  payment_ref: string | null;
+  note: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID' | 'CANCELED';
+  created_at: string;
+}
+
+/* ─── Avatar Border API Interfaces ─── */
+
+export type AvatarBorderTier = 'C' | 'B' | 'A' | 'S' | 'S_PLUS' | 'SS_PLUS' | 'SSS_PLUS';
+
+export interface ApiAvatarBorder {
+  id: number;
+  code: string;
+  title: string;
+  image_url: string;
+  tier: AvatarBorderTier;
+  is_active: boolean;
+  coin_price: number | null;
+  poin_collection: number;
+  is_limited: boolean;
+  total_supply: number | null;
+  sold_count: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  per_user_limit?: number | null;
+  owned?: boolean;
+}
+
+export interface ApiUserAvatarBorder {
+  id: number;
+  border_id: number;
+  code: string;
+  title: string;
+  image_url: string;
+  tier: AvatarBorderTier;
+  poin_collection: number;
+  is_active: boolean;
+  obtained_at: string;
+}
+
+export interface ApiAvatarBorderCatalogResponse {
+  status: number;
+  message: string;
+  items: ApiAvatarBorder[];
+}
+
+export interface ApiAvatarBorderMeResponse {
+  status: number;
+  message: string;
+  items: ApiUserAvatarBorder[];
+}
+
+export interface ApiAvatarBorderActiveResponse {
+  status: number;
+  message: string;
+  item: ApiUserAvatarBorder | null;
+}
+
+export interface ApiAvatarBorderVipEligibilityResponse {
+  status: number;
+  message: string;
+  data: {
+    eligible: boolean;
+    reason: string | null;
+    feature: string;
+    required?: { min_tier?: string };
+    user?: { vip_active?: boolean; vip_level?: string };
+  };
+}
+
+/* ─── Badge Catalog API Interfaces ─── */
+
+export interface ApiBadgeCatalogItem {
+  id: number;
+  sku: string;
+  badge_name: string;
+  badge_icon: string | null;
+  title_color: string | null;
+  coin_price: number;
+  description?: string | null;
+  is_active_catalog: boolean;
+  is_owned: boolean;
+  is_active: boolean;
+  obtained_at?: string | null;
+}
+
+export interface ApiBadgeCatalogResponse {
+  status: number;
+  message: string;
+  data: ApiBadgeCatalogItem[];
+}
+
+export interface ApiBadgeMineItem {
+  id: number;
+  user_id: number;
+  badge_name: string;
+  badge_icon: string | null;
+  title_color: string | null;
+  is_active: boolean;
+  obtained_at: string;
+}
+
+export interface ApiBadgeActiveResponse {
+  status: number;
+  message: string;
+  data: ApiBadgeMineItem[] | null;
+}

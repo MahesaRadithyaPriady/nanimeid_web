@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Trophy, Medal, Crown, ArrowLeft, Loader2, Calendar, 
   Clock, AlertCircle, ChevronLeft, ChevronRight, ShieldAlert
@@ -10,19 +10,32 @@ import {
   getLeaderboard, getMyLeaderboardRank, getAvailableMonths, 
   getMonthlySummary
 } from '../lib/leaderboardApi';
+import { fetchCollectionPointsLeaderboard } from '../lib/profileApi';
 import type { 
   LeaderboardEntry, UserRankPeriod, MyLeaderboardData, AvailableMonth 
 } from '../lib/leaderboardApi';
+import { SkeletonStatCard, SkeletonLeaderboardPodium, SkeletonLeaderboardRow } from '../components/cards/SkeletonCard';
 
 export const LeaderboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isLoggedIn, addToast, userProfile } = useAppStore();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = (searchParams.get('tab') as any) || 'weekly';
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly' | 'collection'>(initialTab);
+  
+  // Sync tab with URL
+  useEffect(() => {
+    const tab = searchParams.get('tab') as any;
+    if (tab && ['daily', 'weekly', 'monthly', 'collection'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
   
   // Leaderboard data state
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [entries, setEntries] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalEntries, setTotalEntries] = useState(0);
@@ -68,6 +81,14 @@ export const LeaderboardPage: React.FC = () => {
           setTotalPages(res.data.totalPages || 1);
           setTotalEntries(res.data.total || 0);
           setResetSeconds(null); // Summary data doesn't have live reset seconds
+        }
+      } else if (activeTab === 'collection') {
+        const res = await fetchCollectionPointsLeaderboard({ page: currentPage, limit: 20 });
+        if (res.status === 200) {
+          setEntries(res.data.items || []);
+          setTotalPages(Math.ceil(res.data.total / res.data.limit) || 1);
+          setTotalEntries(res.data.total || 0);
+          setResetSeconds(null);
         }
       } else {
         const res = await getLeaderboard(activeTab, currentPage, 20);
@@ -115,7 +136,8 @@ export const LeaderboardPage: React.FC = () => {
   }, [isLoggedIn]);
 
   // Handle tab switches
-  const handleTabChange = (tab: 'daily' | 'weekly' | 'monthly') => {
+  const handleTabChange = (tab: 'daily' | 'weekly' | 'monthly' | 'collection') => {
+    navigate(`/leaderboard?tab=${tab}`, { replace: true });
     setActiveTab(tab);
     setCurrentPage(1);
   };
@@ -171,28 +193,28 @@ export const LeaderboardPage: React.FC = () => {
           </button>
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold font-heading text-text-primary tracking-tight leading-tight flex items-center gap-2">
-              <Trophy className="w-7 h-7 text-yellow-400" />
-              Leaderboard XP
+              <Trophy className="w-7 h-7 text-yellow-600 dark:text-yellow-400" />
+              Leaderboard {activeTab === 'collection' ? 'Koleksi' : 'XP'}
             </h1>
             <p className="text-xs text-muted font-medium mt-1">
-              Peringkat penonton dengan dedikasi dan perolehan XP tertinggi.
+              Peringkat penonton dengan dedikasi dan {activeTab === 'collection' ? 'poin koleksi' : 'perolehan XP'} tertinggi.
             </p>
           </div>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex bg-bg-surface border border-border/50 p-1.5 rounded-2xl shrink-0 self-start sm:self-auto">
-          {(['daily', 'weekly', 'monthly'] as const).map((tab) => (
+        <div className="flex flex-wrap bg-bg-surface border border-border/50 p-1.5 rounded-2xl shrink-0 self-start sm:self-auto gap-1">
+          {(['daily', 'weekly', 'monthly', 'collection'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`px-4 py-2 text-xs font-bold rounded-xl uppercase tracking-wider transition-all ${
+              className={`px-3 py-2 text-xs font-bold rounded-xl uppercase tracking-wider transition-all ${
                 activeTab === tab
-                  ? 'bg-gradient-to-r from-primary to-primary-light text-black shadow-glow'
+                  ? 'bg-primary text-black shadow-glow'
                   : 'text-text-secondary hover:text-text-primary'
               }`}
             >
-              {tab === 'daily' ? 'Harian' : tab === 'weekly' ? 'Mingguan' : 'Bulanan'}
+              {tab === 'daily' ? 'Harian' : tab === 'weekly' ? 'Mingguan' : tab === 'monthly' ? 'Bulanan' : 'Koleksi'}
             </button>
           ))}
         </div>
@@ -230,16 +252,13 @@ export const LeaderboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* User Personal Rank Banner (Only shown if logged in) */}
-      {isLoggedIn && (
-        <div className="bg-gradient-to-r from-bg-surface via-bg-elevated to-bg-surface border border-border/40 rounded-2xl p-5 text-left relative overflow-hidden shadow-glow-sm">
+      {/* User Personal Rank Banner (Only shown if logged in and not collection) */}
+      {isLoggedIn && activeTab !== 'collection' && (
+        <div className="bg-bg-surface border border-border/40 rounded-2xl p-5 text-left relative overflow-hidden shadow-glow-sm">
           <div className="absolute top-1/2 right-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
           
           {isLoadingMyRank ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
-              <span className="text-xs text-muted">Memuat peringkat Anda...</span>
-            </div>
+            <SkeletonStatCard />
           ) : myActivePeriod ? (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10">
               <div className="flex items-center gap-4">
@@ -261,7 +280,7 @@ export const LeaderboardPage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-extrabold text-text-primary">{userProfile.name}</h2>
                     {userProfile.isVip && (
-                      <span className="px-1.5 py-0.5 text-[8px] font-black rounded bg-gradient-to-r from-yellow-500 to-amber-600 text-black uppercase tracking-wider">
+                      <span className="px-1.5 py-0.5 text-[8px] font-black rounded bg-yellow-500 text-black uppercase tracking-wider">
                         VIP {userProfile.vipLevel}
                       </span>
                     )}
@@ -280,7 +299,7 @@ export const LeaderboardPage: React.FC = () => {
                 <div className="text-center">
                   <span className="text-xs text-muted block font-semibold uppercase">Peringkat</span>
                   {myActivePeriod.rank ? (
-                    <span className="text-xl font-black text-yellow-400 font-heading flex items-center gap-1">
+                    <span className="text-xl font-black text-yellow-600 dark:text-yellow-400 font-heading flex items-center gap-1">
                       #{myActivePeriod.rank}
                       <span className="text-xs text-muted font-normal font-sans">/ {myActivePeriod.total_users}</span>
                     </span>
@@ -297,7 +316,7 @@ export const LeaderboardPage: React.FC = () => {
       )}
 
       {/* Guest Login Callout Banner */}
-      {!isLoggedIn && (
+      {!isLoggedIn && activeTab !== 'collection' && (
         <div className="bg-bg-surface border border-dashed border-border/60 rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-3">
           <ShieldAlert className="w-8 h-8 text-muted/60" />
           <div>
@@ -306,7 +325,7 @@ export const LeaderboardPage: React.FC = () => {
           </div>
           <button
             onClick={() => navigate('/login')}
-            className="px-6 py-2 rounded-xl bg-gradient-to-r from-primary to-primary-light text-black text-xs font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow"
+            className="px-6 py-2 rounded-xl bg-primary text-black text-xs font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow"
           >
             Masuk Sekarang
           </button>
@@ -315,9 +334,11 @@ export const LeaderboardPage: React.FC = () => {
 
       {/* Main Leaderboard Rankings */}
       {isLoading ? (
-        <div className="py-24 flex flex-col items-center justify-center">
-          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-          <p className="text-sm text-muted">Memuat data peringkat...</p>
+        <div className="space-y-6 animate-fade-in">
+          {currentPage === 1 && <SkeletonLeaderboardPodium />}
+          <div className="bg-bg-surface/30 border border-border/30 rounded-2xl overflow-hidden p-3 space-y-2">
+             {Array.from({ length: 10 }).map((_, i) => <SkeletonLeaderboardRow key={i} />)}
+          </div>
         </div>
       ) : entries.length > 0 ? (
         <div className="space-y-6">
@@ -345,15 +366,15 @@ export const LeaderboardPage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-slate-300 mt-2 font-bold text-xs truncate max-w-[85px]">
+                      <span className="text-slate-500 dark:text-slate-300 mt-2 font-bold text-xs truncate max-w-[85px]">
                         {entries[1].user.fullName || entries[1].user.username}
                       </span>
                       <span className="text-[10px] text-muted font-semibold mt-0.5">
-                        {entries[1].total_xp} XP
+                        {entries[1].total_poin_collection ?? entries[1].total_xp} {activeTab === 'collection' ? 'PTS' : 'XP'}
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-slate-500/25 to-slate-500/5 border-t border-slate-500/30 rounded-t-2xl h-20 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                    <div className="w-full bg-bg-elevated border-t border-slate-500/30 rounded-t-2xl h-20 mt-3 flex items-center justify-center">
                       <div className="text-3xl font-black text-slate-400 font-heading">2</div>
                     </div>
                   </div>
@@ -363,12 +384,12 @@ export const LeaderboardPage: React.FC = () => {
                 {entries[0] && (
                   <div className="flex flex-col items-center w-1/3 z-10 -mx-1">
                     <div className="relative group flex flex-col items-center">
-                      <Crown className="absolute -top-8 w-7 h-7 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)] animate-bounce" />
+                      <Crown className="absolute -top-8 w-7 h-7 text-yellow-600 dark:text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)] animate-bounce" />
                       <div className="relative flex items-center justify-center shrink-0">
                         <UserAvatar
                           src={entries[0].user.avatarUrl}
                           name={entries[0].user.fullName || entries[0].user.username}
-                          className="w-20 h-20 rounded-full border-4 border-yellow-400 shadow-glow-sm group-hover:scale-105 transition-all"
+                          className="w-20 h-20 rounded-full border-4 border-yellow-500 dark:border-yellow-400 shadow-glow-sm group-hover:scale-105 transition-all"
                         />
                         {entries[0].user.activeAvatarBorder && (
                           <img
@@ -378,16 +399,16 @@ export const LeaderboardPage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-yellow-400 mt-2 font-black text-sm truncate max-w-[100px] drop-shadow-[0_0_4px_rgba(250,204,21,0.2)]">
+                      <span className="text-yellow-600 dark:text-yellow-400 mt-2 font-black text-sm truncate max-w-[100px] dark:drop-shadow-[0_0_4px_rgba(250,204,21,0.2)]">
                         {entries[0].user.fullName || entries[0].user.username}
                       </span>
-                      <span className="text-xs text-yellow-300 font-extrabold mt-0.5">
-                        {entries[0].total_xp} XP
+                      <span className="text-xs text-yellow-600 dark:text-yellow-300 font-extrabold mt-0.5">
+                        {entries[0].total_poin_collection ?? entries[0].total_xp} {activeTab === 'collection' ? 'PTS' : 'XP'}
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-yellow-500/25 to-yellow-500/5 border-t border-yellow-500/30 rounded-t-2xl h-28 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="text-4xl font-black text-yellow-400 font-heading">1</div>
+                    <div className="w-full bg-yellow-500/ border-t border-yellow-500/30 rounded-t-2xl h-28 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-4xl font-black text-yellow-600 dark:text-yellow-400 font-heading">1</div>
                     </div>
                   </div>
                 )}
@@ -411,16 +432,16 @@ export const LeaderboardPage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-amber-600 mt-2 font-bold text-xs truncate max-w-[85px]">
+                      <span className="text-amber-700 dark:text-amber-600 mt-2 font-bold text-xs truncate max-w-[85px]">
                         {entries[2].user.fullName || entries[2].user.username}
                       </span>
                       <span className="text-[10px] text-muted font-semibold mt-0.5">
-                        {entries[2].total_xp} XP
+                        {entries[2].total_poin_collection ?? entries[2].total_xp} {activeTab === 'collection' ? 'PTS' : 'XP'}
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-amber-700/25 to-amber-700/5 border-t border-amber-700/30 rounded-t-2xl h-14 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="text-2xl font-black text-amber-600 font-heading">3</div>
+                    <div className="w-full bg-bg-elevated border-t border-amber-700/30 rounded-t-2xl h-14 mt-3 flex items-center justify-center">
+                      <div className="text-2xl font-black text-amber-700 dark:text-amber-600 font-heading">3</div>
                     </div>
                   </div>
                 )}
@@ -445,11 +466,11 @@ export const LeaderboardPage: React.FC = () => {
                   {/* Rank number or medal */}
                   <span className="w-8 text-center shrink-0 flex items-center justify-center">
                     {entry.rank === 1 ? (
-                      <Crown className="w-5 h-5 text-yellow-400" />
+                      <Crown className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                     ) : entry.rank === 2 ? (
-                      <Medal className="w-5 h-5 text-slate-400" />
+                      <Medal className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     ) : entry.rank === 3 ? (
-                      <Medal className="w-5 h-5 text-amber-600" />
+                      <Medal className="w-5 h-5 text-amber-700 dark:text-amber-600" />
                     ) : (
                       <span className="text-sm font-black font-heading text-text-secondary">
                         {entry.rank}
@@ -480,7 +501,7 @@ export const LeaderboardPage: React.FC = () => {
                         {entry.user.fullName || entry.user.username}
                       </span>
                       {entry.user.vip && entry.user.vip.status === 'ACTIVE' && (
-                        <span className="px-1.5 py-0.5 text-[8px] font-black rounded bg-gradient-to-r from-yellow-500 to-amber-600 text-black uppercase tracking-wider scale-90">
+                        <span className="px-1.5 py-0.5 text-[8px] font-black rounded bg-yellow-500 text-black uppercase tracking-wider scale-90">
                           VIP
                         </span>
                       )}
@@ -494,10 +515,10 @@ export const LeaderboardPage: React.FC = () => {
                 {/* Score */}
                 <div className="text-right shrink-0">
                   <span className="text-sm font-mono font-black text-primary">
-                    {entry.total_xp}
+                    {entry.total_poin_collection ?? entry.total_xp}
                   </span>
                   <span className="text-[10px] text-muted block font-semibold uppercase tracking-wider">
-                    XP
+                    {activeTab === 'collection' ? 'PTS' : 'XP'}
                   </span>
                 </div>
               </div>

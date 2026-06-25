@@ -201,7 +201,7 @@ export const EventsPage: React.FC = () => {
           disabled={!signInProgress.can_claim_today || isClaimingSignIn || !signInConfig.is_active}
           className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
             signInProgress.can_claim_today 
-              ? 'bg-gradient-to-r from-primary to-primary-deep text-black hover:scale-[1.01] hover:shadow-glow active:scale-95' 
+              ? 'bg-primary text-black hover:scale-[1.01] hover:shadow-glow active:scale-95' 
               : 'bg-bg-elevated text-muted cursor-not-allowed'
           }`}
         >
@@ -258,7 +258,7 @@ export const EventsPage: React.FC = () => {
           </div>
           <div className="w-full h-2.5 bg-bg-elevated rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-1000 ease-out relative"
+              className="h-full bg-primary transition-all duration-1000 ease-out relative"
               style={{ width: `${progressPercent}%` }}
             >
               <div className="absolute top-0 bottom-0 left-0 right-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-stripes" />
@@ -328,7 +328,7 @@ export const EventsPage: React.FC = () => {
       
       {/* Header */}
       <div className="flex flex-col items-center justify-center py-6 border-b border-border/20">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary-light/20 flex items-center justify-center mb-3">
+        <div className="w-12 h-12 rounded-xl bg-primary/ flex items-center justify-center mb-3">
           <Gift className="w-6 h-6 text-primary" />
         </div>
         <h1 className="text-2xl md:text-3xl font-extrabold font-heading text-text-primary tracking-tight leading-tight">

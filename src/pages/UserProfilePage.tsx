@@ -18,12 +18,15 @@ import type {
   ApiProfileCommentItem, 
   ApiProfileWatchedItem, 
   ApiProfileCompletedItem, 
-  ApiProfileStreak 
+  ApiProfileStreak,
+  AffinityRelationType
 } from '../types';
+import { requestAffinity } from '../lib/affinityApi';
+import { Modal } from '../components/ui/Modal';
 
 export const UserProfilePage: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
-  const { addToast } = useAppStore();
+  const { addToast, isLoggedIn, userProfile } = useAppStore();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ApiUserProfile | null>(null);
@@ -38,6 +41,25 @@ export const UserProfilePage: React.FC = () => {
   const [commentsData, setCommentsData] = useState<ApiProfileCommentItem[]>([]);
   const [completedData, setCompletedData] = useState<{ count: number; episodes: ApiProfileCompletedItem['episodes'] } | null>(null);
   const [streakData, setStreakData] = useState<ApiProfileStreak | null>(null);
+
+  // Affinity Request States
+  const [isAffinityModalOpen, setIsAffinityModalOpen] = useState(false);
+  const [affinityType, setAffinityType] = useState<AffinityRelationType>('TEMAN');
+  const [submittingAffinity, setSubmittingAffinity] = useState(false);
+
+  const handleRequestAffinity = async () => {
+    if (!profile) return;
+    setSubmittingAffinity(true);
+    try {
+      const res = await requestAffinity(profile.id, affinityType);
+      addToast('success', res.message || 'Permintaan afinitas terkirim!');
+      setIsAffinityModalOpen(false);
+    } catch (err: any) {
+      addToast('error', err.message || 'Gagal mengirim permintaan');
+    } finally {
+      setSubmittingAffinity(false);
+    }
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -137,7 +159,7 @@ export const UserProfilePage: React.FC = () => {
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-r from-primary/10 via-primary-light/5 to-bg-base flex items-center justify-center relative">
+          <div className="w-full h-full bg-primary/ flex items-center justify-center relative">
             <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `linear-gradient(rgba(255,102,205,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,102,205,0.4) 1px, transparent 1px)`, backgroundSize: '32px 32px' }} />
           </div>
         )}
@@ -239,6 +261,40 @@ export const UserProfilePage: React.FC = () => {
               </span>
             )}
           </div>
+
+          {/* Affinity Badges */}
+          {profile.affinity_summary && (profile.affinity_summary.pacar > 0 || profile.affinity_summary.sahabat > 0 || profile.affinity_summary.teman > 0) && (
+            <div className="pt-2 flex flex-wrap justify-center sm:justify-start gap-2">
+              {profile.affinity_summary.pacar > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-pink-500/10 border border-pink-500/20 text-[10px] font-bold text-pink-500 uppercase tracking-wider flex items-center gap-1 shadow-glow-sm shadow-pink-500/20">
+                  <Heart className="w-3 h-3 fill-pink-500" /> Pacar
+                </span>
+              )}
+              {profile.affinity_summary.sahabat > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-[10px] font-bold text-orange-500 uppercase tracking-wider flex items-center gap-1 shadow-glow-sm shadow-orange-500/20">
+                  <Flame className="w-3 h-3 fill-orange-500/50" /> {profile.affinity_summary.sahabat} Sahabat
+                </span>
+              )}
+              {profile.affinity_summary.teman > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-bold text-blue-500 uppercase tracking-wider flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" /> {profile.affinity_summary.teman} Teman
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          {isLoggedIn && userProfile?.id !== profile.id && (
+            <div className="pt-3 flex justify-center sm:justify-start">
+              <button 
+                onClick={() => setIsAffinityModalOpen(true)}
+                className="px-4 py-1.5 bg-bg-base hover:bg-bg-elevated border border-primary/40 hover:border-primary text-primary text-xs font-bold rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <Heart className="w-3.5 h-3.5" />
+                Ajak Afinitas
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -474,6 +530,69 @@ export const UserProfilePage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Affinity Modal */}
+      <Modal 
+        isOpen={isAffinityModalOpen} 
+        onClose={() => setIsAffinityModalOpen(false)}
+        title="Kirim Permintaan Afinitas"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Pilih jenis hubungan yang ingin kamu bangun dengan <strong>{profile.profile?.full_name || profile.username}</strong>:
+          </p>
+          
+          <div className="grid grid-cols-1 gap-2">
+            {[
+              { id: 'PACAR', label: 'Pacar', desc: 'Hanya bisa punya 1 pacar.', icon: <Heart className="w-4 h-4 text-pink-500" /> },
+              { id: 'SAHABAT', label: 'Sahabat', desc: 'Teman yang sangat dekat.', icon: <Flame className="w-4 h-4 text-orange-500" /> },
+              { id: 'TEMAN', label: 'Teman', desc: 'Teman biasa atau kenalan.', icon: <CheckCircle className="w-4 h-4 text-blue-500" /> }
+            ].map((type) => (
+              <label 
+                key={type.id} 
+                className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  affinityType === type.id 
+                    ? 'border-primary bg-primary/10' 
+                    : 'border-border/40 hover:border-primary/50 hover:bg-bg-base'
+                }`}
+              >
+                <div className="pt-0.5">
+                  <input 
+                    type="radio" 
+                    name="affinity_type" 
+                    value={type.id} 
+                    checked={affinityType === type.id}
+                    onChange={(e) => setAffinityType(e.target.value as AffinityRelationType)}
+                    className="accent-primary"
+                  />
+                </div>
+                <div className="flex-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-bold text-text-primary text-sm">
+                    {type.icon} {type.label}
+                  </div>
+                  <p className="text-xs text-text-secondary">{type.desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="pt-4 flex justify-end gap-2">
+            <button 
+              onClick={() => setIsAffinityModalOpen(false)}
+              className="px-4 py-2 bg-bg-base hover:bg-border/40 text-text-secondary font-bold text-xs rounded-xl transition-colors"
+            >
+              Batal
+            </button>
+            <button 
+              onClick={handleRequestAffinity}
+              disabled={submittingAffinity}
+              className="px-4 py-2 bg-primary hover:bg-primary-hover text-black font-black text-xs rounded-xl transition-all shadow-glow disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {submittingAffinity ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Kirim Permintaan'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );

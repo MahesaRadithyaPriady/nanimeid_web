@@ -24,6 +24,7 @@ interface WatchPartyState {
     user_id: number;
     username: string;
     avatar: string;
+    avatar_url?: string;
     role: 'host' | 'member';
     is_host: boolean;
     joinedAt: string;
@@ -53,6 +54,7 @@ interface WatchPartyState {
     is_paused: boolean;
     current_time: number;
     speed: number;
+    seek_timestamp?: number;
   };
 
   // Voice Chat (WebRTC) state
@@ -195,16 +197,17 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
           });
 
           // Fetch media URL for late joiner if the session already has an active anime but server didn't send media URL
-          if (!mediaToSet && session.anime_id && session.episode_id) {
+          if ((!mediaToSet || !mediaToSet.url) && session.anime_id && session.episode_id) {
             watchPartyApi.getAnimeDetails(session.anime_id).then(details => {
               const ep = details.episodes.find(e => e.id === session.episode_id);
-              const q = ep?.qualities.find(q => q.nama_quality === session.quality);
+              const q = ep?.qualities.find(q => q.nama_quality === session.quality) || ep?.qualities[0];
               if (ep && q) {
                 set({
                   currentMedia: {
+                    ...mediaToSet,
                     anime_id: session.anime_id,
                     episode_id: session.episode_id,
-                    quality: session.quality,
+                    quality: q.nama_quality,
                     url: q.source_quality,
                     anime: details.anime,
                     episode: ep
@@ -289,6 +292,7 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
       if (data.user_id === useAppStore.getState().userProfile?.id) {
         useAppStore.getState().addToast('error', 'Anda telah dikeluarkan dari Nobar oleh host.');
         get().disconnect();
+        window.dispatchEvent(new CustomEvent('WATCH_PARTY_EXIT'));
       }
     });
 
@@ -302,6 +306,27 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
           quality: media.quality,
         } : null,
       }));
+
+      if ((!media || !media.url) && media?.anime_id && media?.episode_id) {
+        watchPartyApi.getAnimeDetails(media.anime_id).then(details => {
+          const ep = details.episodes.find(e => e.id === media.episode_id);
+          const q = ep?.qualities.find(q => q.nama_quality === media.quality) || ep?.qualities[0];
+          if (ep && q) {
+            set((state) => ({
+              currentMedia: {
+                ...state.currentMedia,
+                ...media,
+                anime_id: media.anime_id,
+                episode_id: media.episode_id,
+                quality: q.nama_quality,
+                url: q.source_quality,
+                anime: details.anime,
+                episode: ep
+              }
+            }));
+          }
+        }).catch(err => console.error('Failed to fetch MEDIA_UPDATED details:', err));
+      }
     });
 
     newSocket.on('PLAY', (data: any) => {
@@ -321,7 +346,7 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
     newSocket.on('SEEK', (data: any) => {
       if (data?.to !== undefined) {
         set((state) => ({
-          playbackState: { ...state.playbackState, current_time: data.to },
+          playbackState: { ...state.playbackState, current_time: data.to, seek_timestamp: Date.now() },
         }));
       }
     });
@@ -345,6 +370,7 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
     newSocket.on('ROOM_ENDED', () => {
       useAppStore.getState().addToast('info', 'Sesi Nobar ini telah diakhiri oleh host.');
       get().disconnect();
+      window.dispatchEvent(new CustomEvent('WATCH_PARTY_EXIT'));
     });
 
     newSocket.on('HOST_TICK', (data: any) => {
@@ -357,18 +383,17 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
         const curSpeed = get().playbackState.speed;
         const curPaused = get().playbackState.is_paused;
 
-        // Always sync paused state and speed; correct time if drift > 2s
-        const needsTimeSync = drift > 2;
         const needsSpeedSync = curSpeed !== hostSpeed;
         const needsPauseSync = curPaused !== hostPaused;
+        const needsTimeUpdate = curTime !== hostTime;
 
-        if (needsTimeSync || needsSpeedSync || needsPauseSync) {
+        if (needsTimeUpdate || needsSpeedSync || needsPauseSync) {
           set((state) => ({
             playbackState: {
               ...state.playbackState,
               is_paused: hostPaused,
               speed: hostSpeed,
-              current_time: needsTimeSync ? hostTime : state.playbackState.current_time,
+              current_time: hostTime,
             },
           }));
         }
@@ -597,7 +622,7 @@ export const useWatchPartyStore = create<WatchPartyState>((set, get) => ({
     if (!socket || !session || !isHost) return;
     socket.emit('SEEK', { code: session.code, to });
     // Optimistic local update for instant UI response
-    set((state) => ({ playbackState: { ...state.playbackState, current_time: to } }));
+    set((state) => ({ playbackState: { ...state.playbackState, current_time: to, seek_timestamp: Date.now() } }));
   },
 
   speed: (rate) => {

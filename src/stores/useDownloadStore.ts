@@ -335,7 +335,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 
   isEpisodeDownloaded: (episodeId) => {
-    return get().downloadedList.some(item => item.episodeId === episodeId);
+    return get().downloadedList.some(item => String(item.episodeId) === String(episodeId));
   },
 
   getVideoBlob: async (episodeId) => {

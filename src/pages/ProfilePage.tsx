@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../stores/useAppStore';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { resolveSrc } from '../lib/utils';
+import { VipTab } from '../components/VipTab';
+import { AffinityTab } from '../components/AffinityTab';
+import { AvatarBorderTab } from '../components/collection/AvatarBorderTab';
+import { StickerTab } from '../components/collection/StickerTab';
+import { BadgeTab } from '../components/collection/BadgeTab';
 import { 
   Bell, Edit3, Save, History, 
   Bookmark, LogOut, ChevronDown, User, Play, Info, Sliders,
   MessageSquare, CheckCircle, Flame, Clock, Heart, ExternalLink, Lock, Loader2,
-  Award, Gift, Star, TrendingUp, Ticket, Sparkles, ChevronRight
+  Award, Gift, Star, TrendingUp, Ticket, Sparkles, ChevronRight, Gem, Crown, Sticker
 } from 'lucide-react';
 import { 
   checkBirthdateStatus, 
@@ -16,7 +22,8 @@ import {
   fetchProfileRecentWatched, 
   fetchProfileComments, 
   fetchProfileCompletedEpisodes, 
-  fetchProfileSignInStreak 
+  fetchProfileSignInStreak,
+  fetchMyCollectionPoints
 } from '../lib/profileApi';
 import {
   fetchMyXp,
@@ -34,7 +41,8 @@ import type {
   ApiProfileCommentItem, 
   ApiProfileWatchedItem, 
   ApiProfileCompletedItem, 
-  ApiProfileStreak 
+  ApiProfileStreak,
+  ApiCollectionPointsSummary
 } from '../types';
 
 export const ProfilePage: React.FC = () => {
@@ -67,8 +75,13 @@ export const ProfilePage: React.FC = () => {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const defaultTab = (searchParams.get('tab') as any) || 'vip';
+
   // Tab states
-  const [activeTab, setActiveTab] = useState<'watched' | 'comments' | 'completed' | 'streak' | 'levels'>('watched');
+  const [activeTab, setActiveTab] = useState<'watched' | 'comments' | 'completed' | 'streak' | 'levels' | 'collection' | 'vip' | 'affinities'>(defaultTab);
+  const [collectionSubTab, setCollectionSubTab] = useState<'avatar-border' | 'sticker' | 'badge'>('avatar-border');
   const [loadingTab, setLoadingTab] = useState(false);
   const [tabError, setTabError] = useState<string | null>(null);
 
@@ -85,6 +98,7 @@ export const ProfilePage: React.FC = () => {
   const [commentsData, setCommentsData] = useState<ApiProfileCommentItem[]>([]);
   const [completedData, setCompletedData] = useState<{ count: number; episodes: ApiProfileCompletedItem['episodes'] } | null>(null);
   const [streakData, setStreakData] = useState<ApiProfileStreak | null>(null);
+  const [collectionPoints, setCollectionPoints] = useState<ApiCollectionPointsSummary | null>(null);
 
   // Load Tab Content dynamically based on activeTab
   useEffect(() => {
@@ -106,6 +120,9 @@ export const ProfilePage: React.FC = () => {
         } else if (activeTab === 'streak') {
           const res = await fetchProfileSignInStreak(userProfile.id!);
           setStreakData(res.data || null);
+        } else if (activeTab === 'collection') {
+          const res = await fetchMyCollectionPoints();
+          setCollectionPoints(res.data || null);
         } else if (activeTab === 'levels') {
           // XP data is already loaded on page mount, refresh if needed
           const xpRes = await fetchMyXp();
@@ -296,7 +313,7 @@ export const ProfilePage: React.FC = () => {
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-r from-primary/10 via-primary-light/5 to-bg-base flex items-center justify-center relative">
+          <div className="w-full h-full bg-primary/ flex items-center justify-center relative">
             <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `linear-gradient(rgba(255,102,205,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,102,205,0.4) 1px, transparent 1px)`, backgroundSize: '32px 32px' }} />
             <span className="text-xs font-semibold text-muted tracking-wider uppercase">NanimeID Premium Banner</span>
           </div>
@@ -322,26 +339,33 @@ export const ProfilePage: React.FC = () => {
         
         {/* Avatar */}
         <div className="relative group shrink-0">
-          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-primary/50 shadow-glow relative bg-bg-base flex items-center justify-center">
-            {userProfile.avatarBorderActive ? (
-              <div 
-                className="absolute inset-0 z-10 pointer-events-none bg-cover bg-center"
-                style={{ backgroundImage: `url(${userProfile.avatarBorderActive.image_url})` }}
+          {/* Outer wrapper — sized to include the border frame */}
+          <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+            {/* Actual avatar — slightly inset so border shows around it */}
+            <div className={`rounded-full overflow-hidden shadow-glow bg-bg-base flex items-center justify-center ${userProfile.avatarBorderActive ? 'w-[72%] h-[72%]' : 'w-full h-full border-2 border-primary/50'}`}>
+              <UserAvatar
+                src={userProfile.avatarUrl}
+                name={userProfile.name}
+                className="w-full h-full rounded-full text-2xl"
               />
-            ) : null}
-            <UserAvatar
-              src={userProfile.avatarUrl}
-              name={userProfile.name}
-              className="w-full h-full rounded-full text-2xl"
-            />
+            </div>
+            {/* Border image — rendered outside/on-top, full size of wrapper */}
+            {userProfile.avatarBorderActive && (
+              <img
+                src={resolveSrc(userProfile.avatarBorderActive.image_url)}
+                alt="avatar border"
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
+              />
+            )}
+            {/* Edit button — anchored to bottom-right of the wrapper */}
+            <button
+              onClick={handleAvatarChange}
+              className="absolute bottom-0 right-0 z-20 p-1.5 bg-primary hover:bg-primary-light text-black rounded-full shadow-md hover:scale-105 active:scale-95 transition-all focus:outline-none"
+              aria-label="Ganti avatar"
+            >
+              <Edit3 className="w-3 h-3" />
+            </button>
           </div>
-          <button
-            onClick={handleAvatarChange}
-            className="absolute bottom-0 right-0 z-20 p-1.5 bg-primary hover:bg-primary-light text-black rounded-full shadow-md hover:scale-105 active:scale-95 transition-all focus:outline-none"
-            aria-label="Ganti avatar"
-          >
-            <Edit3 className="w-3 h-3" />
-          </button>
           <input
             type="file"
             ref={avatarInputRef}
@@ -350,6 +374,7 @@ export const ProfilePage: React.FC = () => {
             className="hidden"
           />
         </div>
+
 
         {/* User metadata */}
         <div className="flex-1 text-center sm:text-left space-y-1.5">
@@ -430,7 +455,7 @@ export const ProfilePage: React.FC = () => {
                 {/* XP Progress Bar */}
                 <div className="relative w-full h-2 bg-bg-base rounded-full overflow-hidden border border-border/40">
                   <div 
-                    className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-500"
+                    className="h-full bg-primary transition-all duration-500"
                     style={{ width: `${Math.min(xpData.progress.percent, 100)}%` }}
                   />
                 </div>
@@ -487,11 +512,14 @@ export const ProfilePage: React.FC = () => {
         {/* Tabs Bar */}
         <div className="flex border-b border-border/40 gap-1 overflow-x-auto no-scrollbar">
           {[
+            { id: 'vip', label: 'VIP & Langganan', icon: <Crown className="w-4 h-4 text-yellow-500" /> },
             { id: 'watched', label: 'Riwayat Nonton Publik', icon: <History className="w-4 h-4" /> },
             { id: 'comments', label: 'Komentar Publik', icon: <MessageSquare className="w-4 h-4" /> },
             { id: 'completed', label: 'Selesai Hari Ini', icon: <CheckCircle className="w-4 h-4" /> },
             { id: 'streak', label: 'Streak Masuk', icon: <Flame className="w-4 h-4" /> },
-            { id: 'levels', label: 'Level & Reward', icon: <Award className="w-4 h-4" /> }
+            { id: 'levels', label: 'Level & Reward', icon: <Award className="w-4 h-4" /> },
+            { id: 'collection', label: 'Koleksi Saya', icon: <Sparkles className="w-4 h-4 text-emerald-400" /> },
+            { id: 'affinities', label: 'Afinitas Saya', icon: <Heart className="w-4 h-4 text-pink-500" /> }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -698,7 +726,7 @@ export const ProfilePage: React.FC = () => {
                 <div className="space-y-6 py-4">
                   {/* XP Summary Card */}
                   {xpData && (
-                    <div className="p-5 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl space-y-4">
+                    <div className="p-5 bg-primary/ border border-primary/20 rounded-2xl space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 bg-primary/20 rounded-xl">
@@ -719,7 +747,7 @@ export const ProfilePage: React.FC = () => {
                       <div className="space-y-1.5">
                         <div className="relative w-full h-3 bg-bg-base rounded-full overflow-hidden border border-border/40">
                           <div 
-                            className="h-full bg-gradient-to-r from-primary to-primary-light transition-all duration-500 rounded-full"
+                            className="h-full bg-primary transition-all duration-500 rounded-full"
                             style={{ width: `${Math.min(xpData.progress.percent, 100)}%` }}
                           />
                         </div>
@@ -894,7 +922,7 @@ export const ProfilePage: React.FC = () => {
                                   {isCurrent && (
                                     <div className="mt-2 h-1.5 bg-bg-base rounded-full overflow-hidden">
                                       <div 
-                                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
+                                        className="h-full bg-primary rounded-full transition-all"
                                         style={{ width: `${progressPercent}%` }}
                                       />
                                     </div>
@@ -1126,6 +1154,77 @@ export const ProfilePage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Tab: Koleksi Saya */}
+              {activeTab === 'collection' && (
+                <div className="space-y-5">
+                  {/* Ringkasan Poin */}
+                  {collectionPoints && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-emerald-400/5 border border-emerald-400/20 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <Gem className="w-7 h-7 text-emerald-400" />
+                        <div>
+                          <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Total Poin Koleksi</p>
+                          <p className="text-xl font-black font-mono text-text-primary">{collectionPoints.total_poin_collection} <span className="text-xs text-emerald-400">pts</span></p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 text-center">
+                        <div className="px-3 py-1.5 bg-bg-base/60 border border-border/40 rounded-lg">
+                          <p className="text-[10px] text-muted uppercase font-bold">Border</p>
+                          <p className="text-sm font-bold text-text-primary">{collectionPoints.breakdown.avatar_borders.count} <span className="text-emerald-400 font-mono text-xs">{collectionPoints.breakdown.avatar_borders.points}pts</span></p>
+                        </div>
+                        <div className="px-3 py-1.5 bg-bg-base/60 border border-border/40 rounded-lg">
+                          <p className="text-[10px] text-muted uppercase font-bold">Badge</p>
+                          <p className="text-sm font-bold text-text-primary">{collectionPoints.breakdown.super_badges.count} <span className="text-emerald-400 font-mono text-xs">{collectionPoints.breakdown.super_badges.points}pts</span></p>
+                        </div>
+                        <div className="px-3 py-1.5 bg-bg-base/60 border border-border/40 rounded-lg">
+                          <p className="text-[10px] text-muted uppercase font-bold">Stiker</p>
+                          <p className="text-sm font-bold text-text-primary">{collectionPoints.breakdown.stickers.count} <span className="text-emerald-400 font-mono text-xs">{collectionPoints.breakdown.stickers.points}pts</span></p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-tab Koleksi */}
+                  <div className="flex gap-2 border-b border-border/30 pb-px">
+                    {[
+                      { id: 'avatar-border' as const, label: 'Avatar Border', icon: <Sparkles className="w-4 h-4" /> },
+                      { id: 'sticker' as const, label: 'Stiker', icon: <Sticker className="w-4 h-4" /> },
+                      { id: 'badge' as const, label: 'Badge', icon: <Award className="w-4 h-4" /> },
+                    ].map((sub) => (
+                      <button
+                        key={sub.id}
+                        onClick={() => setCollectionSubTab(sub.id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-t-lg transition-colors relative ${
+                          collectionSubTab === sub.id
+                            ? 'text-primary border-b-2 border-primary -mb-px'
+                            : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {sub.icon}
+                        {sub.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Sub-tab Content */}
+                  <div>
+                    {collectionSubTab === 'avatar-border' && <AvatarBorderTab />}
+                    {collectionSubTab === 'sticker' && <StickerTab />}
+                    {collectionSubTab === 'badge' && <BadgeTab />}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: VIP */}
+              {activeTab === 'vip' && (
+                <VipTab />
+              )}
+
+              {/* Tab: Affinities */}
+              {activeTab === 'affinities' && (
+                <AffinityTab />
+              )}
             </div>
           )}
         </div>
@@ -1157,7 +1256,7 @@ export const ProfilePage: React.FC = () => {
                   className="group snap-start w-48 sm:w-56 shrink-0 block space-y-2 focus:outline-none"
                 >
                   <div className="relative aspect-[16/9] bg-bg-base rounded-xl overflow-hidden border border-border/60 group-hover:border-primary/45 transition-colors shadow-md">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent" />
+                    <div className="absolute inset-0 bg-primary/" />
                     <img
                       src={h.animeCover || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop'}
                       alt={h.episodeTitle}
@@ -1260,7 +1359,7 @@ export const ProfilePage: React.FC = () => {
             <Bookmark className="w-8 h-8 text-muted/40 mb-2" />
             <h4 className="text-xs font-bold text-text-primary">Daftar Tersimpan Kosong</h4>
             <p className="text-[10px] text-muted max-w-xs mt-1 leading-normal">
-              Bookmark anime atau manga favoritmu untuk menyimpannya di sini.
+              Bookmark anime favoritmu untuk menyimpannya di sini.
             </p>
           </div>
         )}
@@ -1390,7 +1489,7 @@ export const ProfilePage: React.FC = () => {
                   <div className="flex justify-end pt-2">
                     <button
                       onClick={handleSaveProfile}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-95 active:scale-95 transition-all"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-primary text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-95 active:scale-95 transition-all"
                     >
                       <Save className="w-3.5 h-3.5" />
                       <span>Simpan Perubahan</span>
@@ -1465,7 +1564,7 @@ export const ProfilePage: React.FC = () => {
               <Bell className="w-5 h-5 text-primary animate-pulse" />
               <div>
                 <span className="text-sm font-semibold text-text-primary block">Notifikasi Rilis Baru</span>
-                <span className="text-[10px] text-muted">Alert saat anime/manga tersimpan merilis bab baru</span>
+                <span className="text-[10px] text-muted">Alert saat anime tersimpan merilis episode baru</span>
               </div>
             </div>
             

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize2, 
   Minimize2, Settings, ArrowLeft, ArrowRight, Heart, Send, 
@@ -8,7 +8,9 @@ import {
 import Hls from 'hls.js';
 import { useAppStore } from '../stores/useAppStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
+import { usePlayerStore } from '../stores/usePlayerStore';
 import { Badge } from '../components/ui/Badge';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { 
   fetchAnimeDetail, 
@@ -25,6 +27,7 @@ import {
   type ApiEpisodeNavigation
 } from '../lib/animeApi';
 import { postWatchTick, type WatchTickResponse } from '../lib/watchApi';
+import { useConfirmStore } from '../stores/useConfirmStore';
 import type { ApiAnime, ApiEpisode, ApiComment, ApiSticker } from '../types';
 
 /** Format seconds into mm:ss or hh:mm:ss */
@@ -38,6 +41,12 @@ function formatDuration(seconds?: number): string {
   }
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Module-level episode progress cache — bertahan saat WatchPage unmount/remount.
+ * Key: `${animeId}-${epNum}`, Value: {time, wasPlaying}
+ */
+const globalEpisodeCache = new Map<string, { time: number; wasPlaying: boolean }>();
 
 /** Helper to resolve sticker image URLs dynamically by replacing placeholder domains with backend host */
 function getStickerUrl(content?: string): string {
@@ -79,7 +88,7 @@ const WatchPageSkeleton: React.FC = () => {
         {/* Left Area: Player, Title, comments */}
         <div className="lg:col-span-2 space-y-6">
           {/* Video Player Box Skeleton */}
-          <div className="relative aspect-[16/9] w-full bg-[#0d0d0d] rounded-2xl overflow-hidden border border-border/30 flex items-center justify-center group/player">
+          <div className="relative aspect-[16/9] w-full bg-black rounded-2xl overflow-hidden border border-border/30 flex items-center justify-center group/player">
             {/* Dark inner layer with shimmer */}
             <div className="absolute inset-0 animate-shimmer opacity-40" />
             <div className="z-10 flex flex-col items-center gap-3">
@@ -95,17 +104,17 @@ const WatchPageSkeleton: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/20 pb-4">
               <div className="space-y-2.5 flex-1">
                 <div className="w-24 h-3.5 bg-primary/10 rounded border border-primary/10 animate-pulse" />
-                <div className="w-3/4 h-7 bg-white/10 rounded animate-pulse" />
+                <div className="w-3/4 h-7 bg-bg-elevated dark:bg-white/10 rounded animate-pulse" />
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="w-16 h-5 bg-white/5 rounded animate-pulse" />
-                  <div className="w-36 h-4 bg-white/5 rounded animate-pulse" />
+                  <div className="w-16 h-5 bg-bg-elevated dark:bg-white/5 rounded animate-pulse" />
+                  <div className="w-36 h-4 bg-bg-elevated dark:bg-white/5 rounded animate-pulse" />
                 </div>
               </div>
 
               {/* Prev / Next buttons skeletons */}
               <div className="flex items-center gap-2 shrink-0">
-                <div className="w-24 h-10 bg-white/5 border border-border/40 rounded-xl animate-pulse" />
-                <div className="w-24 h-10 bg-white/10 rounded-xl animate-pulse" />
+                <div className="w-24 h-10 bg-bg-elevated dark:bg-white/5 border border-border/40 rounded-xl animate-pulse" />
+                <div className="w-24 h-10 bg-bg-elevated dark:bg-white/10 rounded-xl animate-pulse" />
               </div>
             </div>
 
@@ -198,6 +207,7 @@ export interface WatchPageProps {
 export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isMiniMode }) => {
   const params = useParams<{ id: string; episodeNumber: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const id = forceId || params.id;
   const episodeNumber = forceEpisode || params.episodeNumber;
@@ -212,6 +222,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
   // We re-enable toasts so we can debug the Watch XP Lite issue
   const { addToast } = useAppStore();
+  const confirm = useConfirmStore((s) => s.confirm);
 
   // API States
   const [anime, setAnime] = useState<ApiAnime | null>(null);
@@ -333,6 +344,12 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   const pendingSeekRatioRef = useRef<number>(0);
   const pendingShouldPlayRef = useRef<boolean>(false);
   const lastSavedProgressBucketRef = useRef<number>(-1);
+  const isPlayingRef = useRef(false);
+  const loadedEpisodeKeyRef = useRef<string>('');
+  // Cache: simpan {time, wasPlaying} per episode key agar bisa di-restore saat kembali
+  const episodeCacheRef = useRef<Record<string, { time: number; wasPlaying: boolean }>>({});
+  // AbortController untuk cancel fetch episode yang sudah tidak relevan
+  const loadEpisodeAbortRef = useRef<AbortController | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -343,13 +360,98 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   const [muted, setMuted] = useState(false);
   const [activeSourceIndex, setActiveSourceIndex] = useState(0);
   const [isChangingQuality, setIsChangingQuality] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [floatingXp, setFloatingXp] = useState<{ amount: number; id: number } | null>(null);
-
   // Watch Tick API state
   const [watchTickData, setWatchTickData] = useState<WatchTickResponse['data'] | null>(null);
   const [rewardProgress, setRewardProgress] = useState(0); // 0-100% progress to next reward
+
+      const handleTimeUpdateRef = useRef<() => void>(() => {});
+      useEffect(() => {
+        handleTimeUpdateRef.current = handleTimeUpdate;
+      });
+
+      // Bind events to global video element
+      useEffect(() => {
+        let cleanupFunc: (() => void) | null = null;
+        let observer: MutationObserver | null = null;
+
+        const bindEvents = (video: HTMLVideoElement) => {
+          // Assign to ref so WatchPage controls work
+          (videoRef as any).current = video;
+
+          const onWaiting = () => setIsBuffering(true);
+          const onSeeking = () => setIsBuffering(true);
+          const onCanPlay = () => { setIsBuffering(false); setIsChangingQuality(false); setStreamError(null); };
+          const onPlaying = () => { setIsBuffering(false); setIsChangingQuality(false); setIsPlaying(true); setStreamError(null); };
+          const onSeeked = () => setIsBuffering(false);
+          const onPlay = () => { setIsPlaying(true); setStreamError(null); };
+          const onPause = () => setIsPlaying(false);
+          const onEnded = () => setIsPlaying(false);
+          const onError = (e: any) => {
+            const target = e.target as HTMLVideoElement;
+            console.error("Video Error:", target.error);
+            if (target.error) {
+               setStreamError(`Video gagal diputar: Kode error ${target.error.code}. Format tidak didukung atau file rusak.`);
+            }
+          };
+
+          const onTimeUpdate = () => handleTimeUpdateRef.current();
+
+          video.addEventListener('timeupdate', onTimeUpdate);
+      video.addEventListener('loadedmetadata', handleLoadedMetadata as any);
+      video.addEventListener('waiting', onWaiting);
+      video.addEventListener('seeking', onSeeking);
+      video.addEventListener('canplay', onCanPlay);
+      video.addEventListener('playing', onPlaying);
+      video.addEventListener('seeked', onSeeked);
+      video.addEventListener('play', onPlay);
+      video.addEventListener('pause', onPause);
+      video.addEventListener('ended', onEnded);
+      video.addEventListener('error', onError);
+
+          cleanupFunc = () => {
+            video.removeEventListener('timeupdate', onTimeUpdate);
+video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
+        video.removeEventListener('waiting', onWaiting);
+        video.removeEventListener('seeking', onSeeking);
+        video.removeEventListener('canplay', onCanPlay);
+        video.removeEventListener('playing', onPlaying);
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('play', onPlay);
+        video.removeEventListener('pause', onPause);
+        video.removeEventListener('ended', onEnded);
+        video.removeEventListener('error', onError);
+      };
+    };
+
+    const attemptBind = () => {
+      const video = document.getElementById('global-video-element') as HTMLVideoElement | null;
+      if (video) {
+        if ((videoRef as any).current !== video) {
+          if (cleanupFunc) cleanupFunc();
+          bindEvents(video);
+        }
+        
+        // Ensure video is reparented to our portal (fixes orphan issue after loading screen)
+        const portal = document.getElementById('global-video-portal');
+        if (portal && video.parentElement !== portal) {
+          portal.appendChild(video);
+        }
+      }
+    };
+
+    attemptBind();
+
+    observer = new MutationObserver(attemptBind);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      if (observer) observer.disconnect();
+      if (cleanupFunc) cleanupFunc();
+    };
+  }, []);
 
   useEffect(() => {
     if (watchTickData) {
@@ -358,7 +460,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   }, [watchTickData, rewardProgress]);
 
   const bufferWatchdogRef = useRef<number | null>(null);
-  const watchTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   
   // Interactive Comments State
   const [comments, setComments] = useState<ApiComment[]>([]);
@@ -417,7 +519,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   const handleSelectSticker = async (sticker: ApiSticker) => {
     if (!currentEpisode?.id) return;
     if (!navigator.onLine) {
-      window.alert('Anda sedang offline. Tidak dapat mengirim stiker.');
+      addToast('error', 'Anda sedang offline. Tidak dapat mengirim stiker.');
       return;
     }
     try {
@@ -438,31 +540,31 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       setShowStickerPicker(false);
     } catch (err: any) {
       console.error('Failed to post sticker comment:', err);
-      window.alert(err.message || 'Gagal mengirim stiker');
+      addToast('error', err.message || 'Gagal mengirim stiker');
     }
   };
 
   const handlePurchaseSticker = async (sticker: ApiSticker) => {
     if (!navigator.onLine) {
-      window.alert('Anda sedang offline. Tidak dapat membeli stiker.');
+      addToast('error', 'Anda sedang offline. Tidak dapat membeli stiker.');
       return;
     }
     const itemId = (sticker as any).itemId || (sticker as any).sticker_id || (sticker as any).item_id || sticker.id;
     console.log('[DEBUG] Sticker Object:', sticker);
     console.log('[DEBUG] Computed itemId:', itemId);
     if (!itemId && itemId !== 0) {
-      window.alert('ERROR FRONTEND: ID Stiker kosong! Lihat Console log (F12) untuk detail struktur stiker.');
+      addToast('error', 'ID Stiker kosong! Lihat Console log (F12) untuk detail struktur stiker.');
     }
     setIsPurchasing(itemId);
     try {
       const res = await purchaseSticker(itemId, sticker.code);
-      window.alert(res.message || 'Stiker berhasil dibeli!');
+      addToast('success', res.message || 'Stiker berhasil dibeli!');
       // Reload stickers list to update ownership
       const stickersRes = await fetchStickers();
       setStickers(stickersRes.data || []);
     } catch (err: any) {
       console.error('Failed to purchase sticker:', err);
-      window.alert(err.message || 'Gagal membeli stiker');
+      addToast('error', err.message || 'Gagal membeli stiker');
     } finally {
       setIsPurchasing(null);
     }
@@ -473,6 +575,9 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   useEffect(() => {
     if (!id) return;
     const loadAnimeDetail = async () => {
+      if (!useDownloadStore.getState().isInitialized) {
+        await useDownloadStore.getState().initDownloads();
+      }
       try {
         if (!navigator.onLine) {
           throw new Error('Offline mode');
@@ -500,33 +605,161 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   }, [id]);
 
   // 2. Load current episode details & navigation info
+  // Use episodes from anime detail (already fetched) to avoid redundant API calls
   useEffect(() => {
     if (!id) return;
+    const epKey = `${id}-${currentEpNum}`;
+
+    // ─── FAST PATH: Kembali dari mini mode ─────────────────────────────────────
+    // Cek apakah episode yang sama sedang aktif di GlobalMiniPlayer (survive remount)
+    const playerState = usePlayerStore.getState();
+    const globalVideo = document.getElementById('global-video-element') as HTMLVideoElement | null;
+    const isSameEpActive =
+      playerState.isActive &&
+      playerState.currentEpKey === epKey &&
+      playerState.currentEpisode !== null &&
+      globalVideo !== null &&
+      !globalVideo.error &&
+      globalVideo.readyState >= 2; // HAVE_CURRENT_DATA or better
+
+    if (isSameEpActive) {
+      // Episode sama masih hidup di player global — sync UI tanpa fetch apapun
+      loadedEpisodeKeyRef.current = epKey;
+      setCurrentEpisode(playerState.currentEpisode!);
+      // Build navigation dari episodes lokal jika tersedia
+      if (episodes.length > 0) {
+        const sorted = [...episodes].sort((a, b) => a.nomor_episode - b.nomor_episode);
+        const idx = sorted.findIndex(e => e.nomor_episode === currentEpNum);
+        setNavigation({
+          previousEpisode: idx > 0 ? { id: sorted[idx - 1].id, nomor_episode: sorted[idx - 1].nomor_episode, judul_episode: sorted[idx - 1].judul_episode, thumbnail_episode: sorted[idx - 1].thumbnail_episode } : null,
+          nextEpisode: idx < sorted.length - 1 ? { id: sorted[idx + 1].id, nomor_episode: sorted[idx + 1].nomor_episode, judul_episode: sorted[idx + 1].judul_episode, thumbnail_episode: sorted[idx + 1].thumbnail_episode } : null,
+          totalEpisodes: sorted.length,
+          currentEpisodeNumber: currentEpNum
+        });
+      }
+      const nowPlaying = !globalVideo!.paused;
+      setIsLoading(false);
+      setIsBuffering(false);
+      setIsPlaying(nowPlaying);
+      setCurrentTime(globalVideo!.currentTime);
+      setDuration(globalVideo!.duration || 0);
+      // Pastikan video tetap play
+      if (!nowPlaying && playerState.isPlaying) {
+        globalVideo!.play().catch(() => {});
+      }
+      return;
+    }
+    // ───────────────────────────────────────────────────────────────────────────
+
+    // Cancel any in-flight fetch for a previous episode
+    if (loadEpisodeAbortRef.current) {
+      loadEpisodeAbortRef.current.abort();
+    }
+    const abortCtrl = new AbortController();
+    loadEpisodeAbortRef.current = abortCtrl;
+
+    // --- Cek global cache: jika episode sudah pernah dimuat dan video masih aktif ---
+    const cachedEp = globalEpisodeCache.get(epKey);
+    const videoViaRef = (videoRef as any).current as HTMLVideoElement | null;
+    const videoViaId = document.getElementById('global-video-element') as HTMLVideoElement | null;
+    const video = videoViaRef || videoViaId;
+    const videoIsAlive = video && video.src && !video.error && video.readyState >= 2;
+
+    if (
+      loadedEpisodeKeyRef.current === epKey &&
+      currentEpisode?.qualities?.length &&
+      cachedEp &&
+      videoIsAlive
+    ) {
+      // Episode data sudah ada & video hidup — restore posisi langsung tanpa reload HLS
+      loadedEpisodeKeyRef.current = epKey;
+      pendingSeekTimeRef.current = cachedEp.time > 2 ? cachedEp.time : null;
+      pendingShouldPlayRef.current = cachedEp.wasPlaying;
+      // Restore langsung ke video jika sudah siap
+      Promise.resolve().then(() => {
+        const v = (videoRef as any).current as HTMLVideoElement | null ||
+                  document.getElementById('global-video-element') as HTMLVideoElement | null;
+        if (!v || abortCtrl.signal.aborted) return;
+        if (cachedEp.time > 2 && Math.abs(v.currentTime - cachedEp.time) > 1) {
+          v.currentTime = cachedEp.time;
+        }
+        if (cachedEp.wasPlaying && v.paused) {
+          v.play().catch(() => {});
+        }
+        setIsPlaying(cachedEp.wasPlaying);
+        setCurrentTime(cachedEp.time);
+        setIsBuffering(false);
+      });
+      return;
+    }
+
+    // Tandai episode sedang dimuat
+    loadedEpisodeKeyRef.current = epKey;
+
     const loadEpisode = async () => {
       setIsLoading(true);
+      setIsBuffering(true);
       setError(null);
+      setComments([]);
+      setActiveSourceIndex(0);
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setStreamError(null);
+      setIsChangingQuality(false);
+      pendingSeekTimeRef.current = null;
+      pendingSeekRatioRef.current = 0;
+      pendingShouldPlayRef.current = false;
+      lastSavedProgressBucketRef.current = -1;
+
+      // Pause & reset HLS video untuk episode baru
+      const v = (videoRef as any).current as HTMLVideoElement | null;
+      if (v) {
+        v.pause();
+      }
+
+      if (abortCtrl.signal.aborted) return;
+
       try {
-        if (!navigator.onLine) {
+        // Try to find episode from already-fetched episodes list first
+        const localEp = episodes.find(e => e.nomor_episode === currentEpNum);
+        if (localEp) {
+          if (abortCtrl.signal.aborted) return;
+          setCurrentEpisode(localEp);
+          // Build navigation from local episodes list
+          const sorted = [...episodes].sort((a, b) => a.nomor_episode - b.nomor_episode);
+          const idx = sorted.findIndex(e => e.nomor_episode === currentEpNum);
+          setNavigation({
+            previousEpisode: idx > 0 ? { id: sorted[idx - 1].id, nomor_episode: sorted[idx - 1].nomor_episode, judul_episode: sorted[idx - 1].judul_episode, thumbnail_episode: sorted[idx - 1].thumbnail_episode } : null,
+            nextEpisode: idx < sorted.length - 1 ? { id: sorted[idx + 1].id, nomor_episode: sorted[idx + 1].nomor_episode, judul_episode: sorted[idx + 1].judul_episode, thumbnail_episode: sorted[idx + 1].thumbnail_episode } : null,
+            totalEpisodes: sorted.length,
+            currentEpisodeNumber: currentEpNum
+          });
+          // Fetch full episode detail (with qualities) from API in background
+          // Only update if the user is still on the same episode
+          // Skip if episode is downloaded — offline blob is already playing, no need to refresh
+          const isDownloadedEp = isEpisodeDownloaded(localEp.id);
+          if (navigator.onLine && !isDownloadedEp) {
+            fetchEpisodeByNumber(id, currentEpNum).then(res => {
+              if (res.data?.episode && loadedEpisodeKeyRef.current === epKey && !abortCtrl.signal.aborted) {
+                setCurrentEpisode(res.data.episode);
+                setNavigation(res.data.navigation);
+              }
+            }).catch(() => {});
+          }
+        } else if (navigator.onLine) {
+          // Episode not in local list, fetch from API
+          const epRes = await fetchEpisodeByNumber(id, currentEpNum);
+          if (abortCtrl.signal.aborted) return;
+          if (epRes.data?.episode) {
+            setCurrentEpisode(epRes.data.episode);
+            setNavigation(epRes.data.navigation);
+          }
+        } else {
           throw new Error('Offline mode');
         }
-        const [epRes, similarRes] = await Promise.allSettled([
-          fetchEpisodeByNumber(id, currentEpNum),
-          fetchSimilarAnime(id, { limit: 4 })
-        ]);
-
-        if (epRes.status === 'fulfilled') {
-          setCurrentEpisode(epRes.value.data.episode);
-          setNavigation(epRes.value.data.navigation);
-        } else {
-          throw epRes.reason;
-        }
-
-        if (similarRes.status === 'fulfilled') {
-          setRelatedAnimes(similarRes.value.data ?? []);
-        } else {
-          console.warn('Failed to fetch similar anime:', similarRes.reason);
-        }
       } catch (err: any) {
+        if (abortCtrl.signal.aborted) return;
         console.error(err);
         // Fallback to offline stored data if available
         const offlineItem = useDownloadStore.getState().downloadedList.find(
@@ -545,21 +778,48 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
           setError(err.message || 'Gagal memuat detail episode');
         }
       } finally {
-        setIsLoading(false);
+        if (!abortCtrl.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadEpisode();
-  }, [id, currentEpNum]);
+  }, [id, currentEpNum, episodes]);
+
+  // Safety timeout: if buffering doesn't clear within 15s, force-clear it
+  useEffect(() => {
+    if (!currentEpisode?.id) return;
+    const timeout = window.setTimeout(() => {
+      setIsBuffering(false);
+    }, 15000);
+    return () => window.clearTimeout(timeout);
+  }, [currentEpisode?.id]);
+
+  // Simpan episode ID terakhir untuk mencegah reset comments saat episode tidak berubah
+  const lastCommentEpIdRef = useRef<number | null>(null);
 
   // 3. Load comments & start realtime SSE stream on active episode change
   useEffect(() => {
     if (!currentEpisode?.id) {
-      setComments([]);
+      // Hanya clear jika benar-benar tidak ada episode
+      if (lastCommentEpIdRef.current !== null) {
+        setComments([]);
+        lastCommentEpIdRef.current = null;
+      }
       return;
     }
 
+    // Jika episode ID sama (misal kembali dari mini mode), jangan reset komentar
+    const isNewEpisode = lastCommentEpIdRef.current !== currentEpisode.id;
+    if (!isNewEpisode) {
+      // Episode sama, tidak perlu reload SSE/comments
+      return;
+    }
+    lastCommentEpIdRef.current = currentEpisode.id;
+
     let cancelled = false;
+    setComments([]); // Hanya clear saat ganti episode yang berbeda
 
     // Fetch initial list
     const loadComments = async () => {
@@ -567,7 +827,14 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       try {
         const res = await fetchComments({ episodeId: currentEpisode.id, take: 50 });
         if (!cancelled && res.comments) {
-          setComments(res.comments.filter(c => !c.is_delete));
+          const freshComments = res.comments.filter(c => !c.is_delete);
+          // Merge dengan komentar yang sudah ada (optimistic updates) — deduplicate by ID
+          setComments(prev => {
+            const existingIds = new Set(freshComments.map(c => c.id));
+            // Komentar lokal yang belum ada di server (optimistic) tetap dipertahankan di atas
+            const localOnly = prev.filter(c => !existingIds.has(c.id));
+            return [...localOnly, ...freshComments];
+          });
         }
       } catch (err) {
         console.error('Failed to load comments:', err);
@@ -610,11 +877,22 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     };
   }, [currentEpisode?.id]);
 
-  // Removed active timer useEffect. Handled in handleTimeUpdate.
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
-  const isLoginRestricted = !isLoggedIn;
+  const isDownloaded = currentEpisode ? isEpisodeDownloaded(currentEpisode.id) : false;
+  const isLoginRestricted = !isLoggedIn && !isDownloaded && !isOffline;
   const isUserVip = isLoggedIn && !!userProfile?.isVip;
-  const isVipRestricted = !isLoginRestricted && !!currentEpisode?.early_access && !isUserVip;
+  const isVipRestricted = !isLoginRestricted && !!currentEpisode?.early_access && !isUserVip && !isDownloaded && !isOffline;
   const hasRealSources = !!offlineVideoUrl || !!currentEpisode?.hls_master_url || 
     (currentEpisode?.qualities && currentEpisode.qualities.length > 0 && 
       currentEpisode.qualities.some(q => !!q.source_quality || !!q.hls_url));
@@ -725,87 +1003,35 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     };
   }, [isBuffering, videoSource, activeSourceIndex]);
 
-  // 3. Connect Video Element with native / HLS.js playback
+  // Sync with Global Mini Player
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !videoSource) return;
-
-    let destroyed = false;
-    let hlsInstance: Hls | null = null;
-
-    const resetVideoElement = () => {
-      setIsChangingQuality(false);
-      setIsBuffering(true);
-      video.pause();
-      if (hlsInstance) {
-        hlsInstance.destroy();
-        hlsInstance = null;
-      }
-      video.removeAttribute('src');
-      video.removeAttribute('poster');
-      video.load();
-      video.preload = 'metadata';
-    };
-
-    const handleVideoError = () => {
-      if (destroyed) return;
-      advanceToFallbackSource('Video gagal dimuat.');
-    };
-
-    resetVideoElement();
-
-    if (isHls) {
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
-        video.src = videoSource;
-        video.load();
-        video.addEventListener('error', handleVideoError);
-      } else if (Hls.isSupported()) {
-        // Use Hls.js
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-        });
-        hlsInstance = hls;
-        hls.loadSource(videoSource);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (destroyed) return;
-          console.error('[HLS Error]', data);
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad();
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
-                break;
-              default:
-                handleVideoError();
-                break;
-            }
-          }
-        });
-      } else {
-        // Fallback to native src (will fail if browser cannot play it)
-        video.src = videoSource;
-        video.load();
-        video.addEventListener('error', handleVideoError);
-      }
-    } else {
-      // Non-HLS MP4
-      video.src = videoSource;
-      video.load();
-      video.addEventListener('error', handleVideoError);
+    if (anime && currentEpisode && videoSource) {
+      usePlayerStore.getState().setPlayData(anime, currentEpisode, currentEpNum, videoSource);
+      usePlayerStore.getState().setIsMiniMode(false);
     }
+  }, [anime, currentEpisode, currentEpNum, videoSource]);
+
+  // Activate Mini Mode when unmounting WatchPage
+  useEffect(() => {
+    return () => {
+      const state = usePlayerStore.getState();
+      if (state.isActive) {
+        if (state.isPlaying) {
+          state.setIsMiniMode(true);
+        } else {
+          state.closePlayer();
+        }
+      }
+    };
+  }, []);
+
+  // 3. Removed local HLS.js logic. Now handled by GlobalMiniPlayer.
+  useEffect(() => {
+    // We still need to handle activeSourceIndex reset if needed, but HLS is done outside.
+    let destroyed = false;
 
     return () => {
       destroyed = true;
-      if (hlsInstance) {
-        hlsInstance.destroy();
-      }
-      video.removeEventListener('error', handleVideoError);
-      video.pause();
     };
   }, [videoSource, activeSourceIndex, videoSources.length]);
 
@@ -813,13 +1039,51 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   useEffect(() => {
     if (!currentEpisode || !anime) return;
 
-    const historyRecord = watchHistory.find(
-      (h) => h.animeId === String(anime.id) && h.episodeNumber === currentEpNum
-    );
+    const epKey = `${anime.id}-${currentEpNum}`;
 
-    pendingSeekTimeRef.current = null;
-    pendingSeekRatioRef.current = historyRecord?.progress ?? 0;
-    pendingShouldPlayRef.current = true;
+    // Cek DOM video element langsung (bukan videoRef yang mungkin belum bind saat mount)
+    const liveVideo = (videoRef.current as HTMLVideoElement | null) ||
+                      (document.getElementById('global-video-element') as HTMLVideoElement | null);
+    const isAlreadyPlayingThisEp = liveVideo &&
+      !liveVideo.paused &&
+      liveVideo.currentTime > 0 &&
+      liveVideo.duration > 0;
+
+    if (isAlreadyPlayingThisEp) {
+      // Sinkronkan state UI tanpa memicu reset
+      setIsPlaying(true);
+      setIsBuffering(false);
+      setCurrentTime(liveVideo!.currentTime);
+      setDuration(liveVideo!.duration);
+      // Update global cache
+      globalEpisodeCache.set(epKey, { time: liveVideo!.currentTime, wasPlaying: true });
+      return;
+    }
+
+    // Cek apakah ada cache global untuk episode ini (user kembali ke episode sebelumnya)
+    const cached = globalEpisodeCache.get(epKey);
+    if (cached) {
+      pendingSeekTimeRef.current = cached.time > 2 ? cached.time : null;
+      pendingSeekRatioRef.current = 0;
+      pendingShouldPlayRef.current = cached.wasPlaying;
+    } else {
+      const historyRecord = watchHistory.find(
+        (h) => h.animeId === String(anime.id) && h.episodeNumber === currentEpNum
+      );
+
+      const searchParams = new URLSearchParams(location.search);
+      const targetSecond = searchParams.get('t');
+
+      if (targetSecond && !isNaN(Number(targetSecond))) {
+        pendingSeekTimeRef.current = Number(targetSecond);
+        pendingSeekRatioRef.current = 0;
+      } else {
+        pendingSeekTimeRef.current = null;
+        pendingSeekRatioRef.current = historyRecord?.progress ?? 0;
+      }
+
+      pendingShouldPlayRef.current = true;
+    }
 
     setIsPlaying(false);
     setCurrentTime(0);
@@ -827,7 +1091,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     setPlaybackRate(1);
     setIsBuffering(true);
     lastSavedProgressBucketRef.current = -1;
-  }, [anime?.id, currentEpisode?.id, currentEpNum]);
+  }, [anime?.id, currentEpisode?.id, currentEpNum, location.search]);
 
   useEffect(() => {
     setActiveSourceIndex(0);
@@ -868,7 +1132,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
           break;
         case 'p':
           e.preventDefault();
-          togglePiP();
+          toggleMiniPlayer();
           break;
         case 'm':
           e.preventDefault();
@@ -883,20 +1147,11 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [videoVolume, isFullscreen, isPlaying]);
 
-  // Auto PiP when navigating away or minimizing
+  // Keep isPlayingRef in sync
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!videoRef.current || !document.pictureInPictureEnabled) return;
-      if (document.hidden && isPlaying && !document.pictureInPictureElement) {
-        videoRef.current.requestPictureInPicture().catch((err) => {
-          console.warn("Auto PiP gagal:", err);
-        });
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
 
   // Fade out controls on idle mouse
   const handleMouseMove = () => {
@@ -918,6 +1173,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     const current = videoRef.current.currentTime;
     const dur = videoRef.current.duration || 1;
     setCurrentTime(current);
+
+    // Update global episode cache setiap 1 detik agar bertahan lintas mount/unmount
+    const epKey = `${anime.id}-${currentEpisode.nomor_episode}`;
+    const lastCache = globalEpisodeCache.get(epKey);
+    if (!lastCache || Math.abs(current - lastCache.time) >= 1) {
+      globalEpisodeCache.set(epKey, { time: current, wasPlaying: !videoRef.current.paused });
+    }
     
     // Save progress once per 10-second bucket to avoid spamming storage/backend
     const progressBucket = Math.floor(current / 10);
@@ -943,106 +1205,6 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   };
 
   // Watch Tick API: send tick every 60 seconds while video is playing
-  // Reward only given after 60 seconds accumulated on the same episode
-  // First tick always 0 reward — server can't verify watch time before first tick
-  const sendWatchTick = () => {
-    if (!isLoggedIn || !currentEpisode?.id || !isPlaying || !navigator.onLine) return;
-    
-    postWatchTick(currentEpisode.id, { seconds: 60 })
-      .then((res) => {
-        console.log('[Watch Tick] Response:', res.data);
-        setWatchTickData(res.data);
-        
-        const { tick, xp, coin, watch_reward } = res.data;
-        
-        // Update reward progress bar (0-100%)
-        const progress = (tick.seconds_accumulated % 60) / 60 * 100;
-        setRewardProgress(progress);
-        
-        // Debug: show accumulation progress and VIP tier info
-        const vipInfo = xp.is_vip ? `VIP ${xp.vip_tier} (${xp.xp_per_minute} XP/min)` : 'Non-VIP (10 XP/min)';
-        console.log(
-          `[Watch Tick] Accumulated: ${tick.seconds_accumulated}s | ` +
-          `Next reward in: ${tick.seconds_until_next_reward}s | ` +
-          `First tick: ${tick.is_first_tick ?? false} | ` +
-          `${vipInfo}`
-        );
-        
-        // Only show reward UI if reward was actually given this tick
-        if (tick.seconds_rewarded > 0) {
-          const xpGained = xp.gained_this_tick;
-          const xpLeaderboard = xp.gained_leaderboard_this_tick;
-          const coinsGained = coin.gained_this_tick;
-          
-          // Update XP and coins in store
-          if (xp.current_xp !== undefined) {
-            updateProfile({ xp: xp.current_xp });
-          }
-          if (coin.balance !== undefined) {
-            updateProfile({ coins: coin.balance });
-          }
-          
-          // Show toast with VIP tier info
-          const tierBadge = xp.is_vip ? ` [${xp.vip_tier}]` : '';
-          const levelInfo = xp.level ? ` Lv.${xp.level.level_number}` : '';
-          // addToast('success', `+${xpGained} XP${tierBadge}${levelInfo} & +${coinsGained} Coin`);
-          
-          // Show floating XP animation with tier color
-          setFloatingXp({ amount: xpGained, id: Date.now() });
-          setTimeout(() => setFloatingXp(null), 3000);
-          
-          // Log leaderboard XP
-          console.log(`[Watch Tick] Leaderboard XP: +${xpLeaderboard} (Rank: ${res.data.leaderboard?.rank_today ?? 'N/A'})`);
-          
-          // Check for watch reward tiers
-          if (watch_reward?.pending_coins && watch_reward.pending_coins > 0) {
-            addToast('info', `🎁 Watch reward: ${watch_reward.pending_coins} coins available to claim!`);
-          }
-        } else {
-          // No reward yet (first tick or accumulation < 60s)
-          console.log(
-            `[Watch Tick] No reward yet. ` +
-            `Accumulated: ${tick.seconds_accumulated}s, ` +
-            `Need: ${tick.seconds_until_next_reward}s more`
-          );
-        }
-      })
-      .catch((err) => {
-        console.error('[Watch Tick] Failed:', err);
-      });
-  };
-
-  const startWatchTick = () => {
-    stopWatchTick(); // Clear any existing interval
-    if (!isLoggedIn || !currentEpisode?.id) {
-      console.log('[Watch Tick] Not starting: not logged in or no episode');
-      return;
-    }
-    console.log('[Watch Tick] Starting interval (60s)');
-    // Send first tick immediately, then every 60 seconds
-    sendWatchTick();
-    watchTickIntervalRef.current = setInterval(sendWatchTick, 60_000);
-  };
-
-  const stopWatchTick = () => {
-    if (watchTickIntervalRef.current) {
-      console.log('[Watch Tick] Stopping interval');
-      clearInterval(watchTickIntervalRef.current);
-      watchTickIntervalRef.current = null;
-    }
-  };
-
-  // Start/stop watch tick based on playing state and episode
-  useEffect(() => {
-    if (isPlaying && isLoggedIn && currentEpisode?.id) {
-      startWatchTick();
-    } else {
-      stopWatchTick();
-    }
-    // Cleanup on unmount or episode change
-    return () => stopWatchTick();
-  }, [isPlaying, currentEpisode?.id, isLoggedIn]);
-
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -1056,8 +1218,16 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       (pendingSeekRatioRef.current > 0 && nextDuration > 0 ? pendingSeekRatioRef.current * nextDuration : null);
 
     if (seekTime !== null && Number.isFinite(seekTime) && seekTime >= 0) {
-      video.currentTime = Math.min(seekTime, Math.max(0, nextDuration - 0.25));
-      setCurrentTime(video.currentTime);
+      let targetTime = seekTime;
+      if (Number.isFinite(nextDuration) && nextDuration > 0) {
+        targetTime = Math.min(seekTime, Math.max(0, nextDuration - 0.25));
+      }
+      try {
+        video.currentTime = targetTime;
+        setCurrentTime(video.currentTime);
+      } catch (e) {
+        console.error('Failed to seek video:', e);
+      }
     }
 
     if (pendingShouldPlayRef.current) {
@@ -1078,13 +1248,11 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
-      addToast('info', 'Video dijeda');
     } else {
       videoRef.current.play().then(() => {
         setIsPlaying(true);
-        addToast('success', 'Memutar video');
       }).catch(() => {
-        addToast('error', 'Gagal memutar video');
+        console.error('Gagal memutar video');
       });
     }
   };
@@ -1092,7 +1260,6 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
   const skipTime = (seconds: number) => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + seconds));
-    addToast('info', seconds > 0 ? `Lompat maju ${seconds}s` : `Lompat mundur ${Math.abs(seconds)}s`);
   };
 
   const adjustVolume = (delta: number) => {
@@ -1124,7 +1291,6 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       setVideoVolume(0.5);
       videoRef.current.volume = 0.5;
     }
-    addToast('info', nextMuted ? 'Suara dimatikan' : 'Suara dinyalakan');
   };
 
   const handleProgressSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1141,7 +1307,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       playerContainerRef.current.requestFullscreen().then(() => {
         setIsFullscreen(true);
       }).catch(() => {
-        addToast('error', 'Gagal masuk ke mode Fullscreen');
+        console.error('Gagal masuk ke mode Fullscreen');
       });
     } else {
       document.exitFullscreen();
@@ -1149,17 +1315,27 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     }
   };
 
-  const togglePiP = async () => {
-    if (!videoRef.current || !document.pictureInPictureEnabled) return;
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
+  const toggleMiniPlayer = () => {
+    const state = usePlayerStore.getState();
+    if (state.isActive && state.isMiniMode) {
+      // Return to full player
+      state.setIsMiniMode(false);
+      navigate(`/watch/${state.currentAnime?.id}/ep/${state.currentEpNum}`);
+    } else if (state.isActive && !state.isMiniMode) {
+      // Jika fullscreen, keluar dulu
+      if (document.fullscreenElement) {
+        document.exitFullscreen().then(() => {
+          state.setIsMiniMode(true);
+          navigate('/');
+        }).catch(() => {
+          state.setIsMiniMode(true);
+          navigate('/');
+        });
       } else {
-        await videoRef.current.requestPictureInPicture();
+        // Go to mini player
+        state.setIsMiniMode(true);
+        navigate('/');
       }
-    } catch (error) {
-      console.error("Gagal menggunakan Picture-in-Picture:", error);
-      addToast('error', 'Gagal masuk ke mode Picture-in-Picture');
     }
   };
 
@@ -1176,7 +1352,6 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     videoRef.current.playbackRate = speed;
     setPlaybackRate(speed);
     setOpenSettings('none');
-    addToast('info', `Kecepatan diubah menjadi ${speed}x`);
   };
 
   const changeQuality = (quality: any) => {
@@ -1191,43 +1366,73 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     setOpenSettings('none');
   };
 
-  // Handle Comment Submission
+  // Handle Comment Submission dengan Optimistic Update
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!navigator.onLine) {
-      window.alert('Anda sedang offline. Tidak dapat mengirim komentar.');
+      addToast('error', 'Anda sedang offline. Tidak dapat mengirim komentar.');
       return;
     }
     if (!isLoggedIn) {
-      window.alert('Login terlebih dahulu untuk berkomentar!');
+      addToast('error', 'Login terlebih dahulu untuk berkomentar!');
       return;
     }
-    if (!newCommentText.trim() || !currentEpisode?.id) return;
+    const text = newCommentText.trim();
+    if (!text || !currentEpisode?.id) return;
+
+    // Optimistic update: tampilkan komentar langsung di UI sebelum response server
+    const tempId = -(Date.now()); // ID negatif sementara agar tidak bentrok dengan ID server
+    const optimisticComment: ApiComment = {
+      id: tempId,
+      content: text,
+      kind: 'TEXT',
+      video_second: currentTime,
+      createdAt: new Date().toISOString(),
+      is_delete: false,
+      user: {
+        id: userProfile?.id ?? 0,
+        username: userProfile?.username || '',
+        profile: {
+          full_name: userProfile?.name || userProfile?.username || '',
+          avatar_url: userProfile?.avatarUrl || '',
+        } as any,
+      } as any,
+      _count: { likes: 0 } as any,
+      likedByMe: false,
+    } as any;
+
+    // Tambahkan ke atas daftar komentar
+    setComments(prev => [optimisticComment, ...prev]);
+    setNewCommentText(''); // Clear input segera
 
     try {
       const res = await postComment({
         episode_id: currentEpisode.id,
-        content: newCommentText.trim(),
+        content: text,
         kind: 'TEXT',
         video_second: currentTime
       });
 
       if (res && res.data) {
+        // Ganti optimistic comment dengan data asli dari server
         setComments((prev) => {
-          if (prev.some((c) => c.id === res.data.id)) return prev;
-          return [res.data, ...prev];
+          const withoutTemp = prev.filter(c => c.id !== tempId);
+          if (withoutTemp.some(c => c.id === res.data.id)) return withoutTemp;
+          return [res.data, ...withoutTemp];
         });
       }
-      setNewCommentText('');
     } catch (err: any) {
       console.error('Failed to post comment:', err);
-      window.alert(err.message || 'Gagal mengirim komentar');
+      // Hapus optimistic comment jika gagal
+      setComments(prev => prev.filter(c => c.id !== tempId));
+      setNewCommentText(text); // Kembalikan teks ke input
+      addToast('error', err.message || 'Gagal mengirim komentar');
     }
   };
 
   const handleLikeComment = async (commentId: number) => {
     if (!isLoggedIn) {
-      window.alert('Login terlebih dahulu untuk menyukai komentar!');
+      addToast('error', 'Login terlebih dahulu untuk menyukai komentar!');
       return;
     }
 
@@ -1298,7 +1503,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
 
 
-  if (isLoading) {
+  // Only show skeleton on initial load (no anime data yet)
+  if (isLoading && !anime) {
+    return <WatchPageSkeleton />;
+  }
+
+  // Show skeleton when anime exists but episode is still loading on first visit
+  if (isLoading && anime && !currentEpisode) {
     return <WatchPageSkeleton />;
   }
 
@@ -1311,16 +1522,16 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
     );
   }
 
-  const isFilm = anime.content_type === 'FILM';
+  const isFilm = anime?.content_type === 'FILM';
 
   return (
-    <div className={isMiniMode ? "w-full h-full bg-black flex items-center justify-center" : "pb-16 space-y-6"}>
+    <div className="pb-16 space-y-6">
       
       {/* Back to details link */}
       {!isMiniMode && (
         <button 
           onClick={() => {
-            navigate(`/anime/${anime.id}`, { replace: true });
+            if (anime) navigate(`/anime/${anime.id}`, { replace: true });
           }}
           className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary hover:text-primary transition-colors focus:outline-none cursor-pointer"
         >
@@ -1329,18 +1540,19 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
         </button>
       )}
 
-      <div className={isMiniMode ? "w-full h-full" : "grid grid-cols-1 lg:grid-cols-3 gap-6 items-start"}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
         {/* Left Area: Player, Title, comments */}
-        <div className={isMiniMode ? "w-full h-full" : `${isFilm ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
+        <div className={`${isFilm ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
           
           {/* Video Player Box */}
           <div 
             ref={playerContainerRef}
             onMouseMove={handleMouseMove}
-            className={`relative w-full bg-black overflow-hidden select-none group/player transition-shadow duration-500 ${
+            onTouchStart={handleMouseMove}
+            className={`relative w-full bg-black overflow-hidden select-none group/player ${
               isFullscreen ? 'h-screen w-screen border-none rounded-none' : 
-              isMiniMode ? 'w-full h-full object-cover rounded-none' : 'aspect-[16/9] rounded-2xl border border-border/40 shadow-2xl hover:shadow-[0_0_35px_rgba(255,102,205,0.15)]'
+              isMiniMode ? 'aspect-[16/9] rounded-2xl border border-border/40 bg-black/50' : 'aspect-[16/9] rounded-2xl border border-border/40 shadow-2xl'
             }`}
           >
             {/* Floating XP Animation */}
@@ -1349,45 +1561,32 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                 key={floatingXp.id}
                 className="absolute top-6 right-6 z-50 animate-float-up pointer-events-none"
               >
-                <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-bold px-4 py-2 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] border border-yellow-400/50 flex items-center gap-2">
+                <div className="bg-yellow-500 text-white font-bold px-4 py-2 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] border border-yellow-400/50 flex items-center gap-2">
                   <Star className="w-4 h-4 fill-white" />
                   +{floatingXp.amount} XP
                 </div>
               </div>
             )}
 
-            {/* Custom Video Element */}
-            {(!isLoginRestricted && !isVipRestricted && !isSourceNotFound) && (
-              <video
-                ref={videoRef}
-                src={videoSource}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onWaiting={() => setIsBuffering(true)}
-                onSeeking={() => setIsBuffering(true)}
-                onCanPlay={() => {
-                  setIsBuffering(false);
-                  setStreamError(null);
-                }}
-                onPlaying={() => {
-                  setIsBuffering(false);
-                  setIsPlaying(true);
-                  setStreamError(null);
-                }}
-                onSeeked={() => setIsBuffering(false)}
-                onPlay={() => {
-                  setIsPlaying(true);
-                  setStreamError(null);
-                }}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => setIsPlaying(false)}
-                className="w-full h-full object-contain cursor-pointer"
-                onClick={togglePlay}
-                onDoubleClick={toggleFullscreen}
-                preload="auto"
-                playsInline
-              />
+            {/* Episode Switch / Buffering Overlay — jangan tampil jika video sudah playing (kembali dari mini) */}
+            {((isLoading && !!anime) || (isBuffering && !!currentEpisode && !isChangingQuality && !isPlaying)) && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+                <Loader2 className="w-10 h-10 animate-spin text-primary mb-3" />
+                <p className="text-sm font-medium animate-pulse text-white tracking-widest">
+                  {isLoading ? `MEMUAT EPISODE ${currentEpNum}...` : 'MEMUAT...'}
+                </p>
+              </div>
             )}
+
+            {/* Custom Video Element from Portal (Always rendered to avoid orphaning the video) */}
+            <div 
+              id="global-video-portal" 
+              className={`w-full h-full flex items-center justify-center cursor-pointer ${
+                (isLoginRestricted || isVipRestricted || isSourceNotFound) ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+              onClick={togglePlay}
+              onDoubleClick={toggleFullscreen}
+            />
 
             {/* Custom controls overlay wrapper */}
             {(!isLoginRestricted && !isVipRestricted && !isSourceNotFound) && (
@@ -1400,18 +1599,19 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
               >
                 {/* Top bar (Minimalist Header) */}
                 <div 
-                  className="p-4 sm:p-6 flex items-start gap-4 pointer-events-auto bg-gradient-to-b from-black/85 via-black/30 to-transparent w-full text-left"
+                  className="p-4 sm:p-6 flex items-start gap-4 pointer-events-auto w-full text-left"
+                  style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button 
                     onClick={() => {
                       if (isFullscreen) {
                         toggleFullscreen();
-                      } else {
+                      } else if (anime) {
                         navigate(`/anime/${anime.id}`, { replace: true });
                       }
                     }}
-                    className="w-8 h-8 bg-black/40 border border-white/10 hover:bg-black/70 hover:border-primary/30 text-white rounded-lg transition-all focus:outline-none cursor-pointer flex items-center justify-center shadow-lg"
+                    className="w-8 h-8 bg-black/40 border border-white/10 text-white rounded-lg transition-all focus:outline-none cursor-pointer flex items-center justify-center shadow-lg"
                     title={isFullscreen ? "Keluar Layar Penuh" : "Kembali ke Detail Anime"}
                   >
                     <ArrowLeft className="w-4 h-4 text-white" />
@@ -1420,10 +1620,10 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                   <div className="flex flex-col select-none">
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-black bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">
-                        {anime.label_anime ?? anime.content_type ?? 'ANIME'}
+                        {anime?.label_anime ?? anime?.content_type ?? 'ANIME'}
                       </span>
                       <h2 className="text-xs sm:text-sm font-black text-white leading-tight drop-shadow-md">
-                        {anime.nama_anime}
+                        {anime?.nama_anime}
                       </h2>
                     </div>
                     <span className="text-[10px] font-bold text-text-secondary mt-0.5 drop-shadow-md">
@@ -1437,7 +1637,8 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
                 {/* Bottom control panel on gradient background */}
                 <div 
-                  className="w-full pointer-events-auto mt-auto bg-gradient-to-t from-black/95 via-black/55 to-transparent pt-12 pb-4 px-4 sm:px-6 space-y-3"
+                  className="w-full pointer-events-auto mt-auto pt-12 pb-4 px-4 sm:px-6 space-y-3"
+                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)' }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   
@@ -1474,7 +1675,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       
                       <button 
                         onClick={togglePlay}
-                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        className="text-white transition-all duration-200 focus:outline-none cursor-pointer p-1 active:scale-90"
                         title={isPlaying ? "Jeda (Spasi)" : "Putar (Spasi)"}
                       >
                         {isPlaying ? (
@@ -1486,7 +1687,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
                       <button 
                         onClick={() => skipTime(-10)}
-                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        className="text-white transition-all duration-200 focus:outline-none cursor-pointer p-1 active:scale-90"
                         title="Mundur 10 detik (←)"
                       >
                         <RotateCcw className="w-4 h-4" />
@@ -1494,7 +1695,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
                       <button 
                         onClick={() => skipTime(10)}
-                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                        className="text-white transition-all duration-200 focus:outline-none cursor-pointer p-1 active:scale-90"
                         title="Maju 10 detik (→)"
                       >
                         <RotateCw className="w-4 h-4" />
@@ -1504,7 +1705,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       <div className="flex items-center gap-2 group/volume">
                         <button 
                           onClick={toggleMute}
-                          className="text-white hover:text-primary transition-all duration-200 focus:outline-none cursor-pointer p-1 hover:scale-110 active:scale-90"
+                          className="text-white transition-all duration-200 focus:outline-none cursor-pointer p-1 active:scale-90"
                           title={muted ? "Nyalakan Suara (M)" : "Senyap (M)"}
                         >
                           {muted ? (
@@ -1521,7 +1722,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                           step={0.05}
                           value={muted ? 0 : videoVolume}
                           onChange={handleVolumeSliderChange}
-                          className="w-0 overflow-hidden opacity-0 group-hover/volume:w-16 group-hover/volume:opacity-100 transition-all duration-300 player-volume-slider cursor-pointer focus:outline-none"
+                          className="w-16 sm:w-0 sm:overflow-hidden sm:opacity-0 sm:group-hover/volume:w-16 sm:group-hover/volume:opacity-100 opacity-100 transition-all duration-300 player-volume-slider cursor-pointer focus:outline-none"
                           style={{
                             '--volume-percent': `${(muted ? 0 : videoVolume) * 100}%`
                           } as React.CSSProperties}
@@ -1547,7 +1748,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                               setCurrentTime(introEnd);
                             }
                           }}
-                          className="bg-primary hover:bg-primary-light text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
+                          className="bg-primary text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
                         >
                           <span>LEWATI INTRO</span>
                           <ArrowRight className="w-3.5 h-3.5 text-black" />
@@ -1563,7 +1764,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                               setCurrentTime(outroEnd);
                             }
                           }}
-                          className="bg-primary hover:bg-primary-light text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
+                          className="bg-primary text-black font-extrabold text-[10px] px-3.5 py-2 rounded-xl transition-all duration-200 active:scale-95 shadow-glow flex items-center gap-1.5 cursor-pointer"
                         >
                           <span>LEWATI OUTRO</span>
                           <ArrowRight className="w-3.5 h-3.5 text-black" />
@@ -1574,7 +1775,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       <div className="relative">
                         <button
                           onClick={() => setOpenSettings(prev => prev === 'none' ? 'quality' : 'none')}
-                          className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
+                          className="text-white transition-all duration-200 focus:outline-none p-1 cursor-pointer active:scale-90"
                           title="Pengaturan"
                         >
                           <Settings className="w-4.5 h-4.5" />
@@ -1582,11 +1783,11 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
                         {/* Settings Menu Panel */}
                         {openSettings !== 'none' && (
-                          <div className="absolute bottom-10 right-0 w-48 bg-black/95 border border-white/10 rounded-xl p-2.5 shadow-2xl z-30 space-y-1 backdrop-blur-md">
+                          <div className="absolute bottom-10 right-0 w-48 bg-bg-elevated dark:bg-black/95 border border-border/40 dark:border-white/10 rounded-xl p-2.5 shadow-2xl z-30 space-y-1 backdrop-blur-md">
                             
                             {/* Quality Menu Header */}
-                            <div className="flex justify-between border-b border-white/10 pb-1.5 mb-1.5 select-none text-left">
-                              <span className="text-[10px] font-bold text-white/60 tracking-wider">
+                            <div className="flex justify-between border-b border-border/40 dark:border-white/10 pb-1.5 mb-1.5 select-none text-left">
+                              <span className="text-[10px] font-bold text-text-secondary tracking-wider">
                                 {openSettings === 'quality' ? 'KUALITAS VIDEO' : 'KECEPATAN'}
                               </span>
                               <button
@@ -1603,7 +1804,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                                 <button
                                   onClick={() => changeQuality('auto')}
                                   className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
-                                    String(videoQuality) === 'auto' ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                    String(videoQuality) === 'auto' ? 'bg-primary text-black font-bold' : 'text-text-primary hover:bg-bg-elevated dark:hover:bg-white/5'
                                   }`}
                                 >
                                   Auto Adaptive
@@ -1613,12 +1814,12 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                                     key={q.id}
                                     onClick={() => changeQuality(q.nama_quality)}
                                     className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors flex items-center justify-between cursor-pointer ${
-                                      String(videoQuality) === q.nama_quality ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                      String(videoQuality) === q.nama_quality ? 'bg-primary text-black font-bold' : 'text-text-primary hover:bg-bg-elevated dark:hover:bg-white/5'
                                     }`}
                                   >
                                     <span>{q.nama_quality}</span>
                                     {q.hls_size && (
-                                      <span className={`text-[8.5px] font-semibold ${String(videoQuality) === q.nama_quality ? 'text-black/75' : 'text-white/40'}`}>
+                                      <span className={`text-[8.5px] font-semibold ${String(videoQuality) === q.nama_quality ? 'text-black/75' : 'text-text-secondary'}`}>
                                         {q.hls_size}
                                       </span>
                                     )}
@@ -1632,7 +1833,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                                     key={speed}
                                     onClick={() => changeSpeed(speed)}
                                     className={`w-full text-left text-xs px-2 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
-                                      playbackRate === speed ? 'bg-primary text-black font-bold' : 'text-white hover:bg-white/5'
+                                      playbackRate === speed ? 'bg-primary text-black font-bold' : 'text-text-primary hover:bg-bg-elevated dark:hover:bg-white/5'
                                     }`}
                                   >
                                     {speed === 1 ? 'Normal' : `${speed}x`}
@@ -1645,13 +1846,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                         )}
                       </div>
 
-                      {/* Picture-in-Picture Button */}
+                      {/* Mini Player Button */}
                       <button 
-                        onClick={togglePiP}
-                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
-                        title="Picture-in-Picture (P)"
+                        onClick={toggleMiniPlayer}
+                        className="text-white transition-all duration-200 focus:outline-none p-1 cursor-pointer active:scale-90"
+                        title="Mini Player (P)"
                       >
-                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H11V15H19V11ZM21 19H3C1.89543 19 1 18.1046 1 17V7C1 5.89543 1.89543 5 3 5H21C22.1046 5 23 5.89543 23 7V17C23 18.1046 22.1046 19 21 19ZM21 17V7H3V17H21Z" />
                         </svg>
                       </button>
@@ -1659,13 +1860,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       {/* Fullscreen Button */}
                       <button 
                         onClick={toggleFullscreen}
-                        className="text-white hover:text-primary transition-all duration-200 focus:outline-none p-1 cursor-pointer hover:scale-115 active:scale-90"
+                        className="text-white transition-all duration-200 focus:outline-none p-1 cursor-pointer active:scale-90"
                         title={isFullscreen ? "Keluar Layar Penuh (F)" : "Layar Penuh (F)"}
                       >
                         {isFullscreen ? (
-                          <Minimize2 className="w-4.5 h-4.5" />
+                          <Minimize2 className="w-5 h-5" />
                         ) : (
-                          <Maximize2 className="w-4.5 h-4.5" />
+                          <Maximize2 className="w-5 h-5" />
                         )}
                       </button>
 
@@ -1713,7 +1914,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
             {/* Login Restricted Overlay */}
             {isLoginRestricted && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/95 px-6 text-center backdrop-blur-md">
                 <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-primary/20 bg-black/60 shadow-[0_0_50px_rgba(255,102,205,0.1)] animate-scale-up">
                   <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30 text-primary shadow-[0_0_20px_rgba(255,102,205,0.2)]">
                     <Lock className="w-8 h-8 animate-pulse" />
@@ -1732,7 +1933,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                   <div className="pt-2">
                     <button
                       onClick={() => navigate('/login')}
-                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary-light px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
+                      className="inline-flex items-center justify-center rounded-xl bg-primary px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
                     >
                       Masuk / Daftar Sekarang
                     </button>
@@ -1743,7 +1944,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
             {/* VIP Access Restricted Overlay */}
             {isVipRestricted && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/95 px-6 text-center backdrop-blur-md">
                 <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-yellow-500/20 bg-black/60 shadow-[0_0_50px_rgba(234,179,8,0.1)] animate-scale-up">
                   <div className="mx-auto w-16 h-16 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/30 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
                     <Lock className="w-8 h-8 animate-pulse" />
@@ -1762,7 +1963,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                   <div className="pt-2">
                     <button
                       onClick={() => navigate('/profile')}
-                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(234,179,8,0.3)] cursor-pointer"
+                      className="inline-flex items-center justify-center rounded-xl bg-yellow-500 px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(234,179,8,0.3)] cursor-pointer"
                     >
                       Aktifkan VIP Sekarang
                     </button>
@@ -1773,7 +1974,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
             {/* Source Video Not Found Overlay */}
             {isSourceNotFound && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0a0a0c]/95 px-6 text-center backdrop-blur-md">
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/95 px-6 text-center backdrop-blur-md">
                 <div className="max-w-md space-y-5 p-6 sm:p-8 rounded-3xl border border-pink-500/20 bg-black/60 shadow-[0_0_50px_rgba(255,102,205,0.1)] animate-scale-up">
                   <div className="mx-auto w-16 h-16 rounded-full bg-pink-500/10 flex items-center justify-center border border-pink-500/30 text-primary shadow-[0_0_20px_rgba(255,102,205,0.2)]">
                     <VideoOff className="w-8 h-8 animate-pulse" />
@@ -1789,7 +1990,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                   <div className="pt-2">
                     <button
                       onClick={() => navigate(`/anime/${anime?.id}`)}
-                      className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary-light px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
+                      className="inline-flex items-center justify-center rounded-xl bg-primary px-6 py-3 text-xs font-black text-black hover:opacity-90 active:scale-95 transition-all shadow-[0_0_25px_rgba(255,102,205,0.3)] cursor-pointer"
                     >
                       Kembali ke Detail Anime
                     </button>
@@ -1799,20 +2000,19 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
             )}
           </div>
 
-          {!isMiniMode && (
-            <>
+          <>
               {/* Episode Meta Info and Navigation */}
               <div className="bg-bg-sidebar/65 backdrop-blur-sm border border-border/30 rounded-2xl p-5 sm:p-6 text-left space-y-4 shadow-lg">
                 
                 {/* Main Title and Navigation Row */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/20 pb-4">
               <div className="space-y-1.5 flex-1 min-w-0">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-widest font-mono">Sedang Diputar</span>
+                <span className="text-[10px] font-bold text-pink-600 dark:text-primary uppercase tracking-widest font-mono">Sedang Diputar</span>
                 <h1 className="text-xl sm:text-2xl font-black font-heading text-text-primary leading-tight tracking-tight">
                   {anime.nama_anime}
                 </h1>
                 <div className="flex items-center gap-2 text-sm text-text-secondary mt-1">
-                  <span className="bg-primary/20 text-primary-light font-mono font-bold text-xs px-2 py-0.5 rounded border border-primary/20 whitespace-nowrap">
+                  <span className="bg-primary/10 dark:bg-primary/20 text-pink-700 dark:text-primary-light font-mono font-bold text-xs px-2 py-0.5 rounded border border-primary/20 whitespace-nowrap">
                     {isFilm ? 'FILM MOVIE' : `EPISODE ${currentEpisode?.nomor_episode ?? currentEpNum}`}
                   </span>
                   <span className="font-semibold text-text-primary truncate">{currentEpisode?.judul_episode ?? `Episode ${currentEpNum}`}</span>
@@ -1842,8 +2042,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       </button>
                     ) : isEpisodeDownloaded(currentEpisode.id) ? (
                       <button
-                        onClick={() => {
-                          if (window.confirm('Apakah Anda yakin ingin menghapus episode unduhan ini?')) {
+                        onClick={async () => {
+                          if (await confirm({
+                            title: 'Hapus Unduhan',
+                            message: 'Apakah Anda yakin ingin menghapus episode unduhan ini?',
+                            confirmText: 'Hapus',
+                            variant: 'danger'
+                          })) {
                             deleteDownload(currentEpisode.id);
                           }
                         }}
@@ -1868,9 +2073,9 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                         
                         {/* Quality Dropdown Menu */}
                         {showDownloadDropdown && (
-                          <div className="absolute right-0 bottom-full mb-2 w-48 bg-black/95 border border-white/10 rounded-xl p-2 shadow-2xl z-40 space-y-1 backdrop-blur-md">
-                            <div className="px-2.5 py-1 border-b border-white/10 text-left select-none">
-                              <span className="text-[9.5px] font-bold text-white/50 tracking-wider font-sans">PILIH KUALITAS</span>
+                          <div className="absolute right-0 bottom-full mb-2 w-48 bg-bg-elevated dark:bg-black/95 border border-border/40 dark:border-white/10 rounded-xl p-2 shadow-2xl z-40 space-y-1 backdrop-blur-md">
+                            <div className="px-2.5 py-1 border-b border-border/40 dark:border-white/10 text-left select-none">
+                              <span className="text-[9.5px] font-bold text-text-secondary tracking-wider font-sans">PILIH KUALITAS</span>
                             </div>
                             {loadingQualities ? (
                               <div className="flex items-center justify-center py-4">
@@ -1885,7 +2090,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                                       downloadEpisode(anime!, currentEpisode, q.nama_quality, q.source_quality);
                                       setShowDownloadDropdown(false);
                                     }}
-                                    className="w-full text-left text-xs px-2.5 py-2 hover:bg-white/5 hover:text-primary rounded-lg font-medium transition-colors flex items-center justify-between cursor-pointer text-text-primary"
+                                    className="w-full text-left text-xs px-2.5 py-2 hover:bg-bg-elevated dark:hover:bg-white/5 hover:text-primary rounded-lg font-medium transition-colors flex items-center justify-between cursor-pointer text-text-primary"
                                   >
                                     <span>{q.nama_quality}</span>
                                     <Download className="w-3.5 h-3.5 text-muted hover:text-primary" />
@@ -1919,7 +2124,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                     <button
                       disabled={!navigation?.nextEpisode}
                       onClick={() => navigate(`/watch/${id}/ep/${navigation?.nextEpisode?.nomor_episode}`)}
-                      className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-primary to-primary-light text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none"
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none"
                     >
                       <span>Berikutnya</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -1949,7 +2154,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
               {/* Right indicators */}
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="type" className="bg-green-500/10 text-green-400 border-none px-3 py-1 font-bold text-[10px] sm:text-xs">
+                <Badge variant="type" className="bg-green-500/10 text-green-700 dark:text-green-400 border-none px-3 py-1 font-bold text-[10px] sm:text-xs">
                   SUBTITLE INDONESIA
                 </Badge>
                 <Badge variant="type" className="px-3 py-1 font-bold text-[10px] sm:text-xs">
@@ -1974,9 +2179,11 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
 
             {/* Comment Input */}
             <form onSubmit={handleCommentSubmit} className="flex gap-3">
-              <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-border">
-                <img src={userProfile?.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80"} alt="Avatar" className="w-full h-full object-cover" />
-              </div>
+              <UserAvatar 
+                src={userProfile?.avatarUrl || ''} 
+                name={userProfile?.name || userProfile?.username || '?'} 
+                className="w-9 h-9 rounded-full shrink-0 border border-border" 
+              />
               <div className="flex-1 relative flex items-center">
                 <input
                   type="text"
@@ -2026,14 +2233,14 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       <button
                         type="button"
                         onClick={() => setStickerTab('owned')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'owned' ? 'bg-primary text-black' : 'bg-white/5 text-text-secondary hover:text-text-primary'}`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'owned' ? 'bg-primary text-black' : 'bg-bg-elevated dark:bg-white/5 text-text-secondary hover:text-text-primary'}`}
                       >
                         Milik Saya
                       </button>
                       <button
                         type="button"
                         onClick={() => setStickerTab('store')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'store' ? 'bg-primary text-black' : 'bg-white/5 text-text-secondary hover:text-text-primary'}`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all ${stickerTab === 'store' ? 'bg-primary text-black' : 'bg-bg-elevated dark:bg-white/5 text-text-secondary hover:text-text-primary'}`}
                       >
                         Toko Stiker
                       </button>
@@ -2064,7 +2271,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                               key={sticker.id}
                               type="button"
                               onClick={() => handleSelectSticker(sticker)}
-                              className="aspect-square bg-white/5 hover:bg-white/10 border border-border/40 hover:border-primary/40 rounded-xl p-1.5 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                              className="aspect-square bg-bg-elevated dark:bg-white/5 hover:bg-bg-surface dark:hover:bg-white/10 border border-border/40 hover:border-primary/40 rounded-xl p-1.5 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
                               title={sticker.name}
                             >
                               <img src={getStickerUrl(sticker.image_url)} alt={sticker.name} className="max-w-full max-h-full object-contain" />
@@ -2083,7 +2290,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                           stickers.map((sticker) => (
                             <div
                               key={sticker.id}
-                              className="relative aspect-square bg-white/5 border border-border/30 rounded-xl p-1.5 flex flex-col items-center justify-center"
+                              className="relative aspect-square bg-bg-elevated dark:bg-white/5 border border-border/30 rounded-xl p-1.5 flex flex-col items-center justify-center"
                               title={`${sticker.name} - ${sticker.description || ''}`}
                             >
                               <img src={getStickerUrl(sticker.image_url)} alt={sticker.name} className="max-w-8 max-h-8 object-contain mb-1" />
@@ -2118,7 +2325,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
             <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1 scrollbar-pink">
               {comments.length > 0 ? (
                 comments.map((comment) => {
-                  const userAvatar = comment.user?.profile?.avatar_url || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80";
+                  const userAvatar = comment.user?.profile?.avatar_url || '';
                   const userName = comment.user?.profile?.full_name || comment.user?.username || 'Anonim';
                   const timestampStr = (() => {
                     try {
@@ -2141,9 +2348,11 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                       } : undefined}
                       className={`flex gap-3 text-sm border-b border-border/30 p-3 rounded-xl last:border-none ${bgUrl ? 'border border-primary/20 shadow-glow-sm' : ''}`}
                     >
-                      <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-border">
-                        <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-                      </div>
+                      <UserAvatar 
+                        src={userAvatar} 
+                        name={userName} 
+                        className="w-8 h-8 rounded-full shrink-0 border border-border" 
+                      />
                       <div className="flex-1 space-y-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -2187,7 +2396,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                           (() => {
                             const stickerSrc = comment.content || (comment as any).sticker_url || (comment as any).sticker?.image_url || '';
                             return (
-                              <div className="mt-1 max-w-[120px] aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform duration-200">
+                              <div className="mt-1 max-w-[120px] aspect-square rounded-xl overflow-hidden bg-bg-elevated dark:bg-white/5 border border-border/30 dark:border-white/10 flex items-center justify-center p-1.5 shadow-sm hover:scale-105 transition-transform duration-200">
                                 {stickerSrc ? (
                                   <img 
                                     src={getStickerUrl(stickerSrc)} 
@@ -2232,25 +2441,24 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
             </div>
           </div>
           </>
-          )}
 
         </div>
 
         {/* Right Area (Sidebar): Episode List */}
         {!isFilm && (
-          <div className="bg-bg-surface border border-border/40 rounded-2xl p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-hidden flex flex-col text-left">
+          <div className="space-y-6 animate-fade-in-up bg-bg-surface border border-border/40 rounded-2xl p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-hidden flex flex-col text-left">
             <div className="pb-3 border-b border-border/50 mb-3 shrink-0">
               <h3 className="text-sm font-bold text-text-primary tracking-wide">
                 Episode {anime.nama_anime}
               </h3>
-              <p className="text-[10.5px] text-muted mt-0.5 font-medium">Memutar {currentEpNum} dari {episodes.length} episode</p>
+              <p className="text-[10.5px] text-muted mt-0.5 font-medium">Memutar {currentEpNum} dari {episodes?.length || 0} episode</p>
             </div>
 
             {/* Episode List Scroll Area */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-pink">
-              {episodes.map((ep) => {
+              {episodes?.map((ep) => {
                 // Find progress
-                const hist = watchHistory.find(h => h.animeId === String(anime.id) && h.episodeNumber === ep.nomor_episode);
+                const hist = watchHistory?.find(h => h.animeId === String(anime.id) && h.episodeNumber === ep.nomor_episode);
                 const prog = hist ? hist.progress : 0;
                 const active = currentEpNum === ep.nomor_episode;
 
@@ -2260,7 +2468,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                     to={`/watch/${id}/ep/${ep.nomor_episode}`}
                     className={`flex items-start gap-2.5 p-2 rounded-xl border transition-all ${
                       active 
-                        ? 'bg-primary/5 border-primary/40' 
+                        ? 'bg-bg-active dark:bg-primary/5 border-primary/40' 
                         : 'bg-bg-base border-transparent hover:bg-bg-elevated'
                     }`}
                   >
@@ -2281,12 +2489,12 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
                     {/* Title and Badge */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1">
-                        <span className={`text-[10px] font-bold font-mono px-1 rounded ${active ? 'bg-primary text-black' : 'bg-bg-surface text-text-primary'}`}>
+                        <span className={`text-[10px] font-bold font-mono px-1 rounded ${active ? 'bg-primary/20 dark:bg-primary text-pink-700 dark:text-black' : 'bg-bg-surface text-text-primary'}`}>
                           EP {ep.nomor_episode}
                         </span>
-                        <span className="text-[9px] text-green-400 font-bold">SUB</span>
+                        <span className="text-[9px] text-green-600 dark:text-green-400 font-bold">SUB</span>
                       </div>
-                      <p className={`text-xs truncate font-semibold mt-1 ${active ? 'text-primary' : 'text-text-primary'}`}>
+                      <p className={`text-xs truncate font-semibold mt-1 ${active ? 'text-pink-600 dark:text-primary' : 'text-text-primary'}`}>
                         {ep.judul_episode}
                       </p>
                       <span className="text-[9.5px] text-muted block mt-0.5 font-mono">{formatDuration(ep.durasi_episode)}</span>
@@ -2301,7 +2509,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       </div>
 
       {/* Recommended Anime Section below */}
-      {!isMiniMode && relatedAnimes.length > 0 && (
+      {relatedAnimes.length > 0 && (
         <div className="space-y-4 text-left">
           <h3 className="text-lg font-bold font-heading text-text-primary">Rekomendasi Lainnya</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

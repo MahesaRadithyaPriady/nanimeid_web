@@ -5,6 +5,8 @@ import type {
   ApiProfileWatchedItem,
   ApiProfileCompletedItem,
   ApiProfileStreak,
+  ApiCollectionPointsSummary,
+  ApiCollectionLeaderboardItem,
 } from '../types';
 
 const BASE_URL =
@@ -363,6 +365,54 @@ export async function fetchProfileCompletedEpisodes(
     data: {
       count: payload.count ?? 0,
       episodes: Array.isArray(episodes) ? episodes.map(normalizeCompletedItem) : [],
+    },
+  };
+}
+
+export async function fetchMyCollectionPoints(): Promise<{ status: number; message: string; data: ApiCollectionPointsSummary }> {
+  const res = await get<any>('/profile/me/collection-points');
+  const payload = res.data ?? res;
+  return { status: res.status, message: res.message, data: payload };
+}
+
+export async function fetchCollectionPointsLeaderboard(opts?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+}): Promise<{
+  status: number;
+  message: string;
+  data: {
+    page: number;
+    limit: number;
+    total: number;
+    items: ApiCollectionLeaderboardItem[];
+  };
+}> {
+  const res = await get<any>('/profile/collection-points/leaderboard', {
+    page: opts?.page,
+    limit: opts?.limit,
+    q: opts?.q,
+  });
+  
+  const items = res.items ?? res.data?.items ?? res.data ?? [];
+  const mappedItems = Array.isArray(items) ? items.map((item: any) => ({
+    ...item,
+    user: {
+      ...item.user,
+      avatarUrl: item.profile?.avatar_url ?? item.user?.avatarUrl,
+      fullName: item.profile?.full_name ?? item.user?.fullName,
+    }
+  })) : [];
+
+  return {
+    status: res.status ?? 200,
+    message: res.message ?? 'OK',
+    data: {
+      page: res.page ?? res.data?.page ?? 1,
+      limit: res.limit ?? res.data?.limit ?? 20,
+      total: res.total ?? res.data?.total ?? 0,
+      items: mappedItems,
     },
   };
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useGlobalChatStore, type ChatMessage } from '../stores/useGlobalChatStore';
 import { useAppStore } from '../stores/useAppStore';
+import { useConfirmStore } from '../stores/useConfirmStore';
 import { ChatWindow } from '../components/global-chat/ChatWindow';
 import { ChatInputBar } from '../components/global-chat/ChatInputBar';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 export const GlobalChatPage: React.FC = () => {
   const navigate = useNavigate();
   const { isLoggedIn, authToken, sidebarExpanded } = useAppStore();
+  const confirm = useConfirmStore((s) => s.confirm);
   const { 
     connect, 
     disconnect, 
@@ -59,13 +61,18 @@ export const GlobalChatPage: React.FC = () => {
   };
 
   const handleDelete = async (messageId: number) => {
-    if (window.confirm('Yakin ingin menghapus pesan ini?')) {
+    if (await confirm({
+      title: 'Hapus Pesan',
+      message: 'Yakin ingin menghapus pesan ini?',
+      confirmText: 'Hapus',
+      variant: 'danger'
+    })) {
       await deleteMessage(messageId);
     }
   };
 
   return (
-    <div className={`fixed top-14 right-0 bottom-16 lg:bottom-0 ${sidebarExpanded ? 'lg:left-60' : 'lg:left-[72px]'} left-0 z-10 flex flex-col bg-bg-base overflow-hidden transition-all duration-200`}>
+    <div className={`fixed top-[96px] right-0 bottom-16 lg:bottom-0 ${sidebarExpanded ? 'lg:left-60' : 'lg:left-[72px]'} left-0 z-10 flex flex-col bg-bg-base overflow-hidden transition-all duration-200`}>
       
 
       {/* Chat Window (Scrollable) */}

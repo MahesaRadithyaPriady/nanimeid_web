@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, Mic, ArrowLeft, Loader2, Heart, Gift, Trophy, Download } from 'lucide-react';
+import { Menu, Search, Bell, X, History, Film, BookOpen, LogOut, User, ArrowLeft, Loader2, Heart, Gift, Trophy, Download, Sun, Moon } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { UserAvatar } from '../ui/UserAvatar';
-import { MOCK_MANGAS } from '../../constants/mockData';
+import { resolveSrc } from '../../lib/utils';
 import { fetchLiveSearch } from '../../lib/animeApi';
 
 export const Topbar: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { toggleSidebar, userProfile, addToast, isLoggedIn, logout } = useAppStore();
+  const { toggleSidebar, userProfile, addToast, isLoggedIn, logout, theme, toggleTheme } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -19,14 +19,31 @@ export const Topbar: React.FC = () => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   
-  // Mock Search History
-  const [history, setHistory] = useState<string[]>(['Naruto', 'Solo Leveling', 'Frieren']);
+  // Real Search History
+  const [history, setHistory] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   // Dynamic search suggestions
-  const [suggestions, setSuggestions] = useState<Array<{ id: string; title: string; slug: string; type: 'anime' | 'manga' }>>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; title: string; slug: string; type: 'anime' }>>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Load search history from API
+  useEffect(() => {
+    let active = true;
+    if (isLoggedIn) {
+      import('../../lib/animeApi').then(({ fetchSearchHistory }) => {
+        fetchSearchHistory({ limit: 10 }).then(res => {
+          if (active && res.data && res.data.items) {
+            setHistory(res.data.items.map((i: any) => i.query));
+          }
+        }).catch(err => console.error("Failed to fetch history", err));
+      });
+    } else {
+      setHistory([]);
+    }
+    return () => { active = false; };
+  }, [isLoggedIn, isFocused]);
 
   // Debounced search suggestions fetching from backend
   useEffect(() => {
@@ -49,16 +66,7 @@ export const Topbar: React.FC = () => {
           type: 'anime' as const
         }));
 
-        const q = searchQuery.toLowerCase();
-        const matchedMangas = MOCK_MANGAS.filter(m => m.title.toLowerCase().includes(q))
-          .map(m => ({
-            id: m.id,
-            title: m.title,
-            slug: m.slug,
-            type: 'manga' as const
-          }));
-
-        setSuggestions([...matchedAnimes, ...matchedMangas].slice(0, 5));
+        setSuggestions([...matchedAnimes].slice(0, 5));
       } catch (err) {
         console.error('Error fetching suggestions:', err);
       } finally {
@@ -112,9 +120,15 @@ export const Topbar: React.FC = () => {
     if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // Add to history
+    // Add to API history if logged in
+    if (isLoggedIn) {
+      import('../../lib/animeApi').then(({ addSearchHistory }) => {
+        addSearchHistory(searchQuery.trim()).catch(err => console.error("Failed to add history", err));
+      });
+    }
+
     if (!history.includes(searchQuery.trim())) {
-      setHistory(prev => [searchQuery.trim(), ...prev.slice(0, 4)]);
+      setHistory(prev => [searchQuery.trim(), ...prev].slice(0, 10));
     }
 
     setIsFocused(false);
@@ -122,10 +136,25 @@ export const Topbar: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
-  const handleHistoryDelete = (e: React.MouseEvent, item: string) => {
+  const handleHistoryDelete = async (e: React.MouseEvent, item: string) => {
     e.preventDefault();
     e.stopPropagation();
+    // Optimistic UI update
     setHistory(prev => prev.filter(h => h !== item));
+    
+    if (isLoggedIn) {
+      try {
+        const { fetchSearchHistory, deleteSearchHistory } = await import('../../lib/animeApi');
+        // Need to find ID of the item
+        const res = await fetchSearchHistory({ limit: 50 });
+        const historyItem = res.data.items.find((i: any) => i.query === item);
+        if (historyItem) {
+          await deleteSearchHistory(historyItem.id);
+        }
+      } catch (err) {
+        console.error("Failed to delete history item", err);
+      }
+    }
   };
 
   const clearSearch = () => {
@@ -192,7 +221,7 @@ export const Topbar: React.FC = () => {
             suggestions.map((item) => (
               <Link
                 key={item.id}
-                to={item.type === 'anime' ? `/anime/${item.slug}` : `/manga/${item.slug}`}
+                to={`/anime/${item.slug}`}
                 onClick={() => { setIsFocused(false); setMobileSearchOpen(false); }}
                 className="flex items-center justify-between px-3 py-2.5 hover:bg-bg-surface rounded-lg cursor-pointer transition-colors text-sm text-text-primary"
               >
@@ -222,12 +251,12 @@ export const Topbar: React.FC = () => {
   return (
     <>
       <header 
-        className={`fixed top-0 left-0 right-0 z-40 bg-bg-base/95 backdrop-blur-md transition-all duration-200 flex items-center justify-between px-3 sm:px-4 md:px-6 h-14 ${
+        className={`fixed top-[68px] sm:top-[76px] left-0 right-0 z-40 bg-bg-base/95 backdrop-blur-md transition-all duration-200 flex items-center justify-between px-2.5 sm:px-4 md:px-6 h-12 sm:h-14 ${
           scrolled ? 'border-b border-border shadow-md shadow-black/10' : 'border-b border-border/40'
         }`}
       >
         {/* ═════ Left Area: Hamburger (desktop only) + Logo ═════ */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             onClick={handleMenuClick}
             className="hidden lg:flex p-1.5 hover:bg-bg-surface hover:text-primary rounded-lg text-text-primary transition-colors focus:outline-none items-center justify-center"
@@ -236,14 +265,14 @@ export const Topbar: React.FC = () => {
             <Menu className="w-6 h-6" />
           </button>
 
-          <Link to="/" className="flex items-center gap-1.5 sm:gap-2 group focus:outline-none shrink-0">
+          <Link to="/" className="flex items-center gap-1 sm:gap-2 group focus:outline-none shrink-0">
             <img 
               src="/logo.png" 
               alt="Logo" 
-              className="h-7 sm:h-9 w-auto object-contain transition-transform duration-200 group-hover:scale-105" 
+              className="h-5 sm:h-8 w-auto object-contain transition-transform duration-200 group-hover:scale-105" 
             />
             {/* Full text on all screens */}
-            <span className="inline font-heading font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-text-primary via-text-primary to-primary bg-clip-text text-transparent group-hover:text-primary transition-all duration-200">
+            <span className="inline font-heading font-black text-base sm:text-lg md:text-xl tracking-tight text-text-primary group-hover:text-primary transition-colors duration-200">
               NANIME<span className="text-primary group-hover:text-primary-light transition-colors">ID</span>
             </span>
           </Link>
@@ -264,7 +293,7 @@ export const Topbar: React.FC = () => {
 
                 <input
                   type="text"
-                  placeholder="Cari anime, manga, komik..."
+                  placeholder="Cari anime..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setIsFocused(true)}
@@ -303,34 +332,24 @@ export const Topbar: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* Voice Search (Desktop only) */}
-          <button
-            type="button"
-            onClick={() => addToast('info', 'Pencarian suara dinonaktifkan dalam mode demonstrasi.')}
-            className="w-10 h-10 rounded-full bg-bg-surface hover:bg-bg-elevated flex items-center justify-center text-text-secondary hover:text-primary hover:scale-105 active:scale-95 transition-all shadow-sm shrink-0 focus:outline-none"
-            aria-label="Cari dengan suara"
-          >
-            <Mic className="w-4.5 h-4.5" />
-          </button>
         </div>
 
         {/* ═════ Right Area: Actions + Profile ═════ */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-0.5 sm:gap-2">
           
           {/* Mobile Search Button (visible only on mobile) */}
           <button
             onClick={() => setMobileSearchOpen(true)}
-            className="md:hidden p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+            className="md:hidden p-1.5 sm:p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
             aria-label="Cari"
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
           </button>
 
           {/* Quick Access Downloads Icon */}
           <Link
             to="/downloads"
-            className="p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none shrink-0"
+            className="hidden sm:block p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none shrink-0"
             aria-label="Unduhan Saya"
             title="Unduhan Saya"
           >
@@ -339,37 +358,80 @@ export const Topbar: React.FC = () => {
 
           {isLoggedIn ? (
             <>
+              {/* Coin Balance */}
+              <Link
+                to="/store"
+                className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 mr-0 sm:mr-1 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 rounded-full transition-all focus:outline-none shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
+                aria-label="Saldo Koin"
+                title="Topup Koin"
+              >
+                <div className="w-3.5 h-3.5 sm:w-5 sm:h-5 rounded-full bg-yellow-500 flex items-center justify-center">
+                  <span className="text-[8px] sm:text-[11px] font-black font-heading text-white tracking-tighter -ml-0.5">C</span>
+                </div>
+                <span className="font-bold text-[10px] sm:text-sm text-yellow-600 dark:text-yellow-500">{(userProfile.coins || 0).toLocaleString('id-ID')}</span>
+              </Link>
+
               {/* Events Icon */}
               <Link
                 to="/events"
-                className="p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+                className="hidden sm:block p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
                 aria-label="Misi & Event"
               >
                 <Gift className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
               </Link>
 
+              {/* Theme Toggle Icon */}
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 sm:p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+                aria-label="Toggle Tema"
+                title={theme === 'dark' ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
+              >
+                {theme === 'dark' ? (
+                  <Sun className="w-4.5 h-4.5 sm:w-5.5 sm:h-5.5" />
+                ) : (
+                  <Moon className="w-4.5 h-4.5 sm:w-5.5 sm:h-5.5" />
+                )}
+              </button>
+
               {/* Notification Icon */}
               <button
                 onClick={() => addToast('info', 'Anda tidak memiliki notifikasi baru.')}
-                className="relative p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
+                className="relative p-1.5 sm:p-2 text-text-primary hover:bg-bg-surface hover:text-primary rounded-lg transition-all focus:outline-none"
                 aria-label="Notifikasi"
               >
-                <Bell className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full animate-pulse shadow-glow" />
+                <Bell className="w-4.5 h-4.5 sm:w-5.5 sm:h-5.5" />
+                {/* Temporary: set to true when notification system is implemented */}
+                {false && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full animate-pulse shadow-glow" />
+                )}
               </button>
 
-              {/* User Profile Avatar with dropdown */}
+              {/* User Profile Avatar with border support */}
               <div className="relative" ref={profileMenuRef}>
                 <button
                   onClick={() => setShowProfileMenu(prev => !prev)}
-                  className="flex items-center rounded-full border border-border hover:border-primary overflow-hidden focus:outline-none transition-all active:scale-95"
+                  className="relative flex items-center focus:outline-none transition-all active:scale-95"
                   aria-label="Menu profil"
                 >
-                  <UserAvatar
-                    src={userProfile.avatarUrl}
-                    name={userProfile.name}
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-xs font-bold"
-                  />
+                  <div className="relative w-7 h-7 sm:w-9 sm:h-9 flex items-center justify-center">
+                    {/* Avatar — shrinks when border active */}
+                    <div className={`rounded-full overflow-hidden flex items-center justify-center ${userProfile.avatarBorderActive ? 'w-[70%] h-[70%]' : 'w-full h-full border border-border hover:border-primary transition-all'}`}>
+                      <UserAvatar
+                        src={userProfile.avatarUrl}
+                        name={userProfile.name}
+                        className="w-full h-full rounded-full text-xs font-bold"
+                      />
+                    </div>
+                    {/* Border image overlay */}
+                    {userProfile.avatarBorderActive && (
+                      <img
+                        src={resolveSrc(userProfile.avatarBorderActive.image_url)}
+                        alt="border"
+                        className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
+                      />
+                    )}
+                  </div>
                 </button>
 
                 {/* Profile Dropdown Menu */}
@@ -444,7 +506,7 @@ export const Topbar: React.FC = () => {
             /* ─── Login button (unauthenticated) ─── */
             <Link
               to="/login"
-              className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-gradient-to-r from-primary to-primary-light text-black font-semibold text-xs sm:text-sm hover:opacity-90 hover:scale-[1.02] active:scale-95 transition-all shadow-glow focus:outline-none whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-primary text-black font-semibold text-xs sm:text-sm hover:bg-primary/90 hover:scale-[1.02] active:scale-95 transition-all shadow-sm focus:outline-none whitespace-nowrap"
             >
               <User className="w-4 h-4" />
               <span>Masuk</span>
@@ -458,9 +520,9 @@ export const Topbar: React.FC = () => {
       {/* MOBILE SEARCH OVERLAY — Full-screen search (YouTube mobile-style) */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {mobileSearchOpen && (
-        <div className="fixed inset-0 z-50 bg-bg-base md:hidden animate-fade-in">
+        <div className="fixed inset-0 z-[110] bg-bg-base md:hidden animate-fade-in">
           {/* Top bar with back arrow + search input */}
-          <div className="flex items-center gap-2 px-3 h-14 border-b border-border/40">
+          <div className="flex items-center gap-2 px-3 h-12 sm:h-14 border-b border-border/40">
             <button
               onClick={closeMobileSearch}
               className="p-2 text-text-primary hover:bg-bg-surface rounded-lg transition-colors focus:outline-none shrink-0"
@@ -474,7 +536,7 @@ export const Topbar: React.FC = () => {
                 <input
                   ref={mobileSearchInputRef}
                   type="text"
-                  placeholder="Cari anime, manga, komik..."
+                  placeholder="Cari anime..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full h-10 pl-4 pr-10 bg-bg-surface border border-border/60 focus:border-primary rounded-full text-sm text-text-primary placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
@@ -501,14 +563,14 @@ export const Topbar: React.FC = () => {
           </div>
 
           {/* Suggestions area (scrollable full screen) */}
-          <div className="overflow-y-auto h-[calc(100vh-56px)] bg-bg-base text-left">
+          <div className="overflow-y-auto h-[calc(100vh-48px)] sm:h-[calc(100vh-56px)] bg-bg-base text-left">
             {renderSuggestionDropdown()}
 
             {/* Empty prompt */}
             {!searchQuery.trim() && history.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-center px-6">
                 <Search className="w-10 h-10 text-muted/30 mb-4" />
-                <p className="text-sm text-muted">Cari anime, manga, atau komik favorit kamu</p>
+                <p className="text-sm text-muted">Cari anime favorit kamu</p>
               </div>
             )}
           </div>

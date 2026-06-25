@@ -77,14 +77,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   if (isLoading && messages.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto bg-black/40 flex flex-col p-4 sm:p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto bg-black/5 dark:bg-black/40 flex flex-col p-4 sm:p-6 space-y-6">
         <div className="mt-auto flex flex-col space-y-6 w-full">
           {[1, 2, 3, 4, 5, 6].map(i => (
             <div key={i} className={`flex w-full ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
               {i % 2 !== 0 && (
-                <div className="w-9 h-9 rounded-full bg-white/5 animate-pulse shrink-0 mr-3 mt-1" />
+                <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 animate-pulse shrink-0 mr-3 mt-1" />
               )}
-              <div className={`w-2/3 sm:w-1/2 h-20 rounded-2xl bg-white/5 animate-pulse ${i % 2 !== 0 ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} />
+              <div className={`w-2/3 sm:w-1/2 h-20 rounded-2xl bg-black/5 dark:bg-white/5 animate-pulse ${i % 2 !== 0 ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} />
             </div>
           ))}
         </div>
@@ -94,11 +94,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   return (
     <div 
-      className="flex-1 overflow-y-auto scrollbar-pink bg-[#0a0a0f] relative flex flex-col"
+      className="flex-1 overflow-y-auto scrollbar-pink bg-bg-base relative flex flex-col"
       ref={scrollRef}
     >
       {/* Background Pattern (WhatsApp style subtle pattern) */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("/pattern.png")', backgroundSize: '400px' }} />
+      <div className="absolute inset-0 opacity-[0.04] dark:opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'url("/pattern.png")', backgroundSize: '400px' }} />
 
       <div className="flex flex-col min-h-full p-2 sm:p-4 relative z-10 pointer-events-auto w-full max-w-4xl mx-auto">
         <div className="mt-auto" />
@@ -113,7 +113,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
 
         {!hasMore && messages.length > 0 && (
-          <div className="text-center py-6 text-xs text-text-secondary/50 bg-black/20 rounded-lg mx-auto px-4 my-4 border border-white/5">
+          <div className="text-center py-6 text-xs text-text-secondary/70 dark:text-text-secondary/50 bg-black/5 dark:bg-black/20 rounded-lg mx-auto px-4 my-4 border border-border/50 dark:border-white/5">
             Mulai dari obrolan paling awal
           </div>
         )}
@@ -136,7 +136,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <React.Fragment key={msg.id}>
               {showDate && (
                 <div className="flex justify-center my-4">
-                  <div className="bg-bg-elevated/80 backdrop-blur-sm border border-white/10 text-text-secondary text-[10px] px-3 py-1 rounded-full shadow-sm">
+                  <div className="bg-bg-elevated/90 backdrop-blur-sm border border-border/50 dark:border-white/10 text-text-secondary text-[10px] px-3 py-1 rounded-full shadow-sm">
                     {msgDate}
                   </div>
                 </div>

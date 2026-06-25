@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Compass, Tv, BookOpen, History, Calendar, Settings, X, ChevronRight, MessageCircle, Heart, Gift, Trophy, Download, Users } from 'lucide-react';
+import { Home, Compass, Tv, BookOpen, BookA, History, Calendar, Settings, X, ChevronRight, MessageCircle, Heart, Gift, Trophy, Download, Users, Sparkles, Gem, Store, Crown } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 
 export const Sidebar: React.FC = () => {
   const location = useLocation();
-  const { sidebarExpanded, toggleMobileMenu } = useAppStore();
+  const { sidebarExpanded, toggleMobileMenu, userProfile } = useAppStore();
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -17,22 +17,27 @@ export const Sidebar: React.FC = () => {
     { icon: <Home className="w-5 h-5" />, label: 'Beranda', path: '/' },
     { icon: <Compass className="w-5 h-5" />, label: 'Jelajahi', path: '/browse' },
     { icon: <MessageCircle className="w-5 h-5" />, label: 'Global Chat', path: '/global-chat' },
-    { icon: <Users className="w-5 h-5 text-primary" />, label: 'Nobar', path: '/watch-party' },
+    { icon: <Users className="w-5 h-5" />, label: 'Nobar', path: '/watch-party' },
+    { icon: <Store className="w-5 h-5" />, label: 'Toko', path: '/store' },
+    { icon: <Crown className="w-5 h-5" />, label: 'Langganan VIP', path: '/vip' },
   ];
 
   // Content/Genre Section
   const contentItems = [
     { icon: <Tv className="w-5 h-5" />, label: 'Anime Terbaru', path: '/anime' },
-    { icon: <BookOpen className="w-5 h-5" />, label: 'Manga / Manhwa', path: '/manga' },
+    { icon: <BookA className="w-5 h-5" />, label: 'Katalog A-Z', path: '/catalog' },
+    { icon: <Sparkles className="w-5 h-5" />, label: 'Semua Genre', path: '/genres' },
   ];
 
   // Library Section (Anda)
   const libraryItems = [
     { icon: <Heart className="w-5 h-5" />, label: 'Favorit', path: '/favorites' },
     { icon: <History className="w-5 h-5" />, label: 'Riwayat Tonton', path: '/history' },
-    { icon: <Download className="w-5 h-5 text-primary" />, label: 'Unduhan Saya', path: '/downloads' },
-    { icon: <Gift className="w-5 h-5 text-primary" />, label: 'Misi & Event', path: '/events' },
-    { icon: <Trophy className="w-5 h-5 text-yellow-500" />, label: 'Leaderboard', path: '/leaderboard' },
+    { icon: <Download className="w-5 h-5" />, label: 'Unduhan Saya', path: '/downloads' },
+    { icon: <Gift className="w-5 h-5" />, label: 'Misi & Event', path: '/events' },
+    { icon: <Heart className="w-5 h-5" />, label: 'Vote Waifu', path: '/waifu-vote' },
+    { icon: <Trophy className="w-5 h-5" />, label: 'Leaderboard XP', path: '/leaderboard' },
+    { icon: <Gem className="w-5 h-5" />, label: 'Leaderboard Koleksi', path: '/leaderboard?tab=collection' },
   ];
 
   // System/Settings Section
@@ -60,16 +65,17 @@ export const Sidebar: React.FC = () => {
         to={item.path}
         className={`
           yt-sidebar-item
-          flex items-center gap-5 px-3 py-2 mx-2 rounded-[10px]
-          transition-all duration-150 ease-out group focus:outline-none
+          flex items-center gap-5 px-3 py-2 mx-2 rounded-xl
+          transition-colors duration-150 group focus:outline-none
+          active:bg-white/[0.12]
           ${active 
-            ? 'bg-white/10 text-text-primary font-semibold' 
-            : 'text-text-primary hover:bg-white/[0.06] font-normal'
+            ? 'bg-bg-active dark:bg-white/10 text-primary dark:text-text-primary font-semibold' 
+            : 'text-text-secondary dark:text-text-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.08] font-normal'
           }
         `}
       >
         <div className={`shrink-0 transition-colors duration-150 ${
-          active ? 'text-primary' : 'text-text-secondary group-hover:text-text-primary'
+          active ? 'text-primary' : 'text-text-secondary group-hover:text-primary dark:group-hover:text-text-primary'
         }`}>
           {item.icon}
         </div>
@@ -106,31 +112,23 @@ export const Sidebar: React.FC = () => {
         onMouseLeave={hideTooltip}
         className={`
           relative flex flex-col items-center justify-center
-          py-[10px] mx-auto w-[56px]
-          rounded-xl gap-[5px]
-          transition-all duration-200 ease-out
+          py-3 mx-auto w-[72px] min-h-[72px]
+          rounded-xl gap-1.5
+          transition-colors duration-150
           text-center group focus:outline-none
-          hover:scale-[1.04] active:scale-[0.97]
+          active:bg-white/[0.12]
           ${active 
-            ? 'text-text-primary' 
-            : 'text-text-secondary hover:text-text-primary'
+            ? 'text-primary dark:text-text-primary bg-bg-active dark:bg-white/[0.08] shadow-[0_0_12px_rgba(255,102,205,0.12)]' 
+            : 'text-text-secondary hover:text-primary dark:hover:text-text-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.08]'
           }
         `}
       >
-        {/* Background pill — visible on hover and active */}
-        <div className={`
-          absolute inset-0 rounded-xl transition-all duration-200
-          ${active 
-            ? 'bg-white/[0.08] shadow-[0_0_12px_rgba(255,102,205,0.12)]' 
-            : 'bg-transparent group-hover:bg-white/[0.05]'
-          }
-        `} />
 
         {/* Icon with active glow */}
         <div className={`relative shrink-0 z-10 transition-all duration-200 ${
           active 
             ? 'text-primary drop-shadow-[0_0_6px_rgba(255,102,205,0.5)]' 
-            : 'text-text-secondary group-hover:text-text-primary'
+            : 'text-text-secondary group-hover:text-primary dark:group-hover:text-text-primary'
         }`}>
           {item.icon}
         </div>
@@ -141,7 +139,7 @@ export const Sidebar: React.FC = () => {
         )}
 
         {/* Label */}
-        <span className={`relative z-10 text-[10px] w-full truncate px-0.5 leading-tight transition-colors duration-200 ${
+        <span className={`relative z-10 text-[10px] w-full px-1 leading-[1.2] line-clamp-2 transition-colors duration-200 ${
           active ? 'font-semibold text-text-primary' : 'font-medium'
         }`}>
           {item.label}
@@ -292,7 +290,7 @@ export const Sidebar: React.FC = () => {
     <>
       {/* Desktop Sidebar only (lg+). Mobile uses BottomNav. */}
       <aside 
-        className={`fixed left-0 top-14 bottom-0 z-30 hidden lg:block transition-all duration-250 ease-in-out ${
+        className={`fixed left-0 top-[132px] bottom-0 z-30 hidden lg:block transition-all duration-250 ease-in-out ${
           sidebarExpanded ? 'w-60' : 'w-[72px]'
         }`}
       >

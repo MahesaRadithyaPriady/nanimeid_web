@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Trash2, Play, HardDrive, Clock, AlertCircle, Compass } from 'lucide-react';
 import { useDownloadStore } from '../stores/useDownloadStore';
+import { useConfirmStore } from '../stores/useConfirmStore';
 
 // Helper to format file sizes
 function formatBytes(bytes: number, decimals = 1) {
@@ -28,6 +29,7 @@ function formatDate(timestamp: number) {
 export const DownloadsPage: React.FC = () => {
   const navigate = useNavigate();
   const { downloadedList, initDownloads, deleteDownload, isInitialized } = useDownloadStore();
+  const confirm = useConfirmStore((s) => s.confirm);
 
   // Initialize store downloads
   useEffect(() => {
@@ -37,7 +39,12 @@ export const DownloadsPage: React.FC = () => {
   const handleDelete = async (e: React.MouseEvent, episodeId: number) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm('Apakah Anda yakin ingin menghapus episode unduhan ini?')) {
+    if (await confirm({
+      title: 'Hapus Unduhan',
+      message: 'Apakah Anda yakin ingin menghapus episode unduhan ini?',
+      confirmText: 'Hapus',
+      variant: 'danger'
+    })) {
       await deleteDownload(episodeId);
     }
   };
@@ -180,7 +187,7 @@ export const DownloadsPage: React.FC = () => {
           </p>
           <button
             onClick={() => navigate('/browse')}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-light text-black font-extrabold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-black font-extrabold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all"
           >
             <Compass className="w-4 h-4" />
             <span>Jelajahi Anime</span>

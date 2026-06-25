@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -16,18 +17,22 @@ export default {
           DEFAULT: '#ff66cd',
           deep: '#ff66be',
         },
-        muted: '#aaaaaa',
+        muted: 'rgb(var(--color-text-secondary) / <alpha-value>)',
         bg: {
-          base: '#0d0d0d',
-          surface: '#161616',
-          elevated: '#1f1f1f',
-          sidebar: '#111111',
+          base: 'rgb(var(--color-bg-base) / <alpha-value>)',
+          surface: 'rgb(var(--color-bg-surface) / <alpha-value>)',
+          elevated: 'rgb(var(--color-bg-elevated) / <alpha-value>)',
+          sidebar: 'rgb(var(--color-bg-sidebar) / <alpha-value>)',
+          active: 'rgb(var(--color-bg-active) / <alpha-value>)',
         },
         text: {
-          primary: '#f0f0f0',
-          secondary: '#aaaaaa',
+          primary: 'rgb(var(--color-text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
         },
-        border: '#2a2a2a',
+        border: {
+          DEFAULT: 'rgb(var(--color-border) / <alpha-value>)',
+          accent: 'rgb(var(--color-border-accent) / <alpha-value>)',
+        },
       },
       fontSize: {
         'xs':   ['0.75rem',  { lineHeight: '1.1rem' }],

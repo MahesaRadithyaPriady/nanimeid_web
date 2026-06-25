@@ -90,7 +90,7 @@ export const HistoryPage: React.FC = () => {
                 {/* Visual Thumbnail */}
                 <div className="relative w-full sm:w-44 aspect-[16/9] bg-bg-base rounded-xl overflow-hidden shrink-0">
                   {/* Mock poster banner */}
-                  <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-primary-light/5" />
+                  <div className="absolute inset-0 bg-primary/" />
                   
                   {/* Dynamic cover fallback based on ID */}
                   <img
@@ -164,7 +164,7 @@ export const HistoryPage: React.FC = () => {
           </p>
           <button
             onClick={() => navigate('/browse')}
-            className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-light text-black font-semibold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all"
+            className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-primary text-black font-semibold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all"
           >
             <Compass className="w-4 h-4 text-black" />
             <span>Mulai Menonton</span>

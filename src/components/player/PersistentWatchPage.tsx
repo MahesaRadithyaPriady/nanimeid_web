@@ -55,7 +55,7 @@ export const PersistentWatchPage: React.FC = () => {
     >
       {/* Overlay controls for Mini Player */}
       {isMiniMode && (
-        <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-2 bg-gradient-to-b from-black/80 to-transparent z-50 opacity-0 group-hover/mini:opacity-100 transition-opacity pointer-events-none">
+        <div className="absolute top-0 left-0 right-0 p-2 flex justify-end gap-2 bg-black/60 z-50 opacity-0 group-hover/mini:opacity-100 transition-opacity pointer-events-none">
           <button 
             onClick={expandMiniPlayer}
             className="p-1.5 bg-black/50 hover:bg-primary/80 hover:text-black text-white rounded-lg backdrop-blur-sm transition-all pointer-events-auto"

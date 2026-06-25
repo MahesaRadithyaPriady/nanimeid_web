@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Compass, Sliders, X, Loader2, Search,
-  Film, BookOpen, TrendingUp, Sparkles, Clock,
-  Filter, RotateCcw
+  Sparkles, Filter, RotateCcw
 } from 'lucide-react';
-import { MOCK_MANGAS, GENRES } from '../constants/mockData';
+import { GENRES } from '../constants/mockData';
 import { AnimeCard } from '../components/cards/AnimeCard';
-import { MangaCard } from '../components/cards/MangaCard';
 import { SkeletonGrid } from '../components/cards/SkeletonCard';
 import { 
   fetchAnimeList, 
@@ -16,7 +14,7 @@ import {
 } from '../lib/animeApi';
 import type { ApiAnime } from '../types';
 
-type FilterType = 'semua' | 'anime' | 'donghua' | 'film' | 'manga' | 'manhwa' | 'manhua';
+type FilterType = 'semua' | 'anime' | 'donghua' | 'film';
 type FilterStatus = 'semua' | 'ongoing' | 'completed' | 'upcoming';
 type FilterSort = 'latest' | 'rating' | 'popular';
 
@@ -59,7 +57,7 @@ export const BrowsePage: React.FC = () => {
     const status = searchParams.get('status') as FilterStatus;
     const sort = searchParams.get('sort') as FilterSort;
 
-    setFilterType(['anime', 'donghua', 'film', 'manga', 'manhwa', 'manhua'].includes(type) ? type : 'semua');
+    setFilterType(['anime', 'donghua', 'film'].includes(type) ? type : 'semua');
     setFilterGenre(genre || 'Semua');
     setFilterStatus(status || 'semua');
     setFilterSort(sort || 'latest');
@@ -87,128 +85,65 @@ export const BrowsePage: React.FC = () => {
     }
 
     try {
-      // Local mock manga routing
-      if (['manga', 'manhwa', 'manhua'].includes(filterType)) {
-        let local = MOCK_MANGAS.map(m => ({ ...m, isAnime: false as const, id: m.id }));
-        
-        if (filterType === 'manga') local = local.filter(m => m.type === 'manga');
-        if (filterType === 'manhwa') local = local.filter(m => m.type === 'manhwa');
-        if (filterType === 'manhua') local = local.filter(m => m.type === 'manhua');
-
-        if (filterGenre !== 'Semua') local = local.filter(m => m.genres.includes(filterGenre));
-        if (filterStatus !== 'semua') local = local.filter(m => m.status === filterStatus);
-        if (filterSort === 'rating') local.sort((a, b) => b.rating - a.rating);
-
-        const start = (pageNum - 1) * PAGE_SIZE;
-        const paginated = local.slice(start, start + PAGE_SIZE);
-        
-        if (isLoadMore) {
-          setResults(prev => [...prev, ...paginated]);
-        } else {
-          setResults(paginated);
-        }
-        
-        setTotalResults(local.length);
-        setHasMore(start + PAGE_SIZE < local.length);
-        return;
-      }
-
-      // Fetch from API - use fetchAnimeList as primary endpoint with combined filters
       let animeItems: ApiAnime[] = [];
       let total = 0;
 
-      // Determine sort parameters
-      let sortBy = 'id';
-      let order = 'desc';
-      if (filterSort === 'rating') sortBy = 'rating_anime';
-      if (filterSort === 'popular') sortBy = 'view_anime';
-
       // Determine content type for server-side filtering
-      // API supports: ANIME | FILM | DONGHUA | ALL (undefined = ALL)
       let contentType: string | undefined = undefined;
       if (filterType === 'anime') contentType = 'ANIME';
       if (filterType === 'donghua') contentType = 'DONGHUA';
       if (filterType === 'film') contentType = 'FILM';
-      // manga/manhwa/manhua are local mock data, handled separately above
+      const typeParam = contentType;
+
+      // Determine status for server-side filtering
+      let statusParam: string | undefined = undefined;
+      if (filterStatus === 'ongoing') statusParam = 'ONGOING';
+      if (filterStatus === 'completed') statusParam = 'COMPLETED';
+      if (filterStatus === 'upcoming') statusParam = 'UPCOMING';
+
+      // Determine sort parameters
+      let sortBy = 'id';
+      let order = 'desc';
+      if (filterSort === 'rating') { sortBy = 'rating_anime'; }
+      if (filterSort === 'popular') { sortBy = 'view_anime'; }
 
       if (filterGenre !== 'Semua') {
-        // Genre filter - use genre endpoint then apply client-side filters
-        const res = await fetchAnimeByGenre(filterGenre, { page: pageNum, limit: PAGE_SIZE });
-        let items = res.items || [];
-        
-        // Apply content type filter client-side (genre endpoint doesn't support contentType)
-        if (contentType) {
-          items = items.filter(a => {
-            const ct = ((a as any).content_type || '').toUpperCase();
-            return !ct || ct === contentType;
-          });
-        }
-        
-        // Apply status filter client-side (genre endpoint doesn't support status)
-        if (filterStatus !== 'semua') {
-          items = items.filter(a => {
-            const status = (a.status_anime || '').toLowerCase();
-            if (filterStatus === 'completed') return status.includes('finished') || status.includes('completed');
-            if (filterStatus === 'ongoing') return status.includes('ongoing');
-            if (filterStatus === 'upcoming') return status.includes('upcoming');
-            return true;
-          });
-        }
-        
-        animeItems = items;
-        total = res.total || items.length;
-      } else {
-        // Main list endpoint with server-side contentType + sort filters
-        const res = await fetchAnimeList({
+        // Genre endpoint — supports type, status, sortBy, order
+        const res = await fetchAnimeByGenre(filterGenre, {
           page: pageNum,
           limit: PAGE_SIZE,
+          type: typeParam,
           contentType,
+          status: statusParam,
           sortBy,
           order,
         });
-        
-        let items = res.data || [];
-        
-        // Apply status filter client-side (API doesn't support status param directly)
-        if (filterStatus !== 'semua') {
-          items = items.filter(a => {
-            const status = (a.status_anime || '').toLowerCase();
-            if (filterStatus === 'completed') return status.includes('finished') || status.includes('completed');
-            if (filterStatus === 'ongoing') return status.includes('ongoing');
-            if (filterStatus === 'upcoming') return status.includes('upcoming');
-            return true;
-          });
-        }
-        
-        animeItems = items;
-        // Use server-side total for pagination (before client-side status filtering)
-        total = res.meta?.total || items.length;
+        animeItems = res.items || [];
+        total = res.total || animeItems.length;
+      } else {
+        // Main list endpoint — all filters sent server-side
+        const res = await fetchAnimeList({
+          page: pageNum,
+          limit: PAGE_SIZE,
+          type: typeParam,
+          contentType,
+          status: statusParam,
+          sortBy,
+          order,
+        });
+        animeItems = res.data || [];
+        total = res.meta?.total || animeItems.length;
       }
 
       const formatted: BrowseResult[] = animeItems.map(a => ({ ...a, isAnime: true }));
-      
 
-      // For "semua" type, also include local manga on first page
-      if (filterType === 'semua' && pageNum === 1) {
-        let localManga = MOCK_MANGAS.map(m => ({ ...m, isAnime: false as const, id: m.id }));
-        if (filterGenre !== 'Semua') localManga = localManga.filter(m => m.genres.includes(filterGenre));
-        const combined = [...formatted, ...localManga.slice(0, 6)];
-        if (isLoadMore) {
-          setResults(prev => [...prev, ...combined]);
-        } else {
-          setResults(combined);
-        }
-        setTotalResults(total + localManga.length);
-        setHasMore(formatted.length >= PAGE_SIZE);
+      if (isLoadMore) {
+        setResults(prev => [...prev, ...formatted]);
       } else {
-        if (isLoadMore) {
-          setResults(prev => [...prev, ...formatted]);
-        } else {
-          setResults(formatted);
-        }
-        setTotalResults(total);
-        setHasMore(formatted.length >= PAGE_SIZE);
+        setResults(formatted);
       }
+      setTotalResults(total);
+      setHasMore(formatted.length >= PAGE_SIZE && formatted.length > 0);
     } catch (err) {
       console.error('Browse fetch error:', err);
       if (!isLoadMore) setResults([]);
@@ -220,11 +155,12 @@ export const BrowsePage: React.FC = () => {
     }
   }, [filterType, filterGenre, filterStatus, filterSort]);
 
-  // Initial load and filter changes
+  // Initial load and filter changes — always fetch page 1 on filter change
   useEffect(() => {
-    if (page === 1) {
-      fetchData(1, false);
-    }
+    setPage(1);
+    setResults([]);
+    setHasMore(true);
+    fetchData(1, false);
   }, [filterType, filterGenre, filterStatus, filterSort]);
 
   // Load more on page change
@@ -269,49 +205,22 @@ export const BrowsePage: React.FC = () => {
     setSearchParams({});
   };
 
-  const isFilterActive = filterType !== 'semua' || filterGenre !== 'Semua' || filterStatus !== 'semua' || filterSort !== 'latest';
+  const isFilterActive = filterGenre !== 'Semua';
 
   const genreList = genres.length > 0 ? genres : GENRES.filter(g => g !== 'Semua');
-
-  // Quick filter chips
-  const typeChips = [
-    { val: 'semua', lbl: 'Semua', icon: <Compass className="w-3.5 h-3.5" /> },
-    { val: 'anime', lbl: 'Anime', icon: <Film className="w-3.5 h-3.5" /> },
-    { val: 'donghua', lbl: 'Donghua', icon: <Film className="w-3.5 h-3.5" /> },
-    { val: 'film', lbl: 'Film', icon: <Film className="w-3.5 h-3.5" /> },
-    { val: 'manga', lbl: 'Manga', icon: <BookOpen className="w-3.5 h-3.5" /> },
-    { val: 'manhwa', lbl: 'Manhwa', icon: <BookOpen className="w-3.5 h-3.5" /> },
-    { val: 'manhua', lbl: 'Manhua', icon: <BookOpen className="w-3.5 h-3.5" /> },
-  ];
-
-  const sortChips = [
-    { val: 'latest', lbl: 'Terbaru', icon: <Clock className="w-3.5 h-3.5" /> },
-    { val: 'popular', lbl: 'Populer', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-    { val: 'rating', lbl: 'Rating', icon: <Sparkles className="w-3.5 h-3.5" /> },
-  ];
 
   // Content header title
   const getContentTitle = () => {
     if (filterGenre !== 'Semua') return filterGenre;
-    if (filterType === 'anime') return 'Anime';
-    if (filterType === 'donghua') return 'Donghua';
-    if (filterType === 'film') return 'Film';
-    if (filterType === 'manga') return 'Manga';
-    if (filterType === 'manhwa') return 'Manhwa';
-    if (filterType === 'manhua') return 'Manhua';
-    if (filterStatus === 'ongoing') return 'Sedang Tayang';
-    if (filterStatus === 'completed') return 'Sudah Tamat';
-    if (filterSort === 'popular') return 'Terpopuler';
-    if (filterSort === 'rating') return 'Rating Tertinggi';
     return 'Semua Konten';
   };
 
   return (
     <div className="space-y-6 pb-20">
-      
+
       {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-bg-surface via-bg-elevated to-bg-surface border border-border/30">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5" />
+      <div className="relative overflow-hidden rounded-2xl bg-bg-surface border border-border/30">
+        <div className="absolute inset-0 bg-primary/5" />
         <div className="relative px-5 py-6 sm:px-8 sm:py-8">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
@@ -324,7 +233,7 @@ export const BrowsePage: React.FC = () => {
                     Jelajahi
                   </h1>
                   <p className="text-xs sm:text-sm text-muted font-medium mt-0.5">
-                    Temukan anime & manga favoritmu
+                    Temukan anime favoritmu
                   </p>
                 </div>
               </div>
@@ -343,74 +252,9 @@ export const BrowsePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Type Filter Tabs */}
+      {/* Genre Filter */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-          {typeChips.map(chip => (
-            <button
-              key={chip.val}
-              onClick={() => updateParam('type', chip.val === filterType ? 'semua' : chip.val)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
-                filterType === chip.val
-                  ? 'bg-primary text-black shadow-glow-sm'
-                  : 'bg-bg-surface border border-border/40 text-text-secondary hover:border-primary/30 hover:text-text-primary'
-              }`}
-            >
-              {chip.icon}
-              <span>{chip.lbl}</span>
-            </button>
-          ))}
-          
-          {/* Divider */}
-          <div className="w-px h-6 bg-border/30 shrink-0 mx-1" />
-          
-          {sortChips.map(chip => (
-            <button
-              key={chip.val}
-              onClick={() => updateParam('sort', chip.val === filterSort ? 'latest' : chip.val)}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
-                filterSort === chip.val
-                  ? 'bg-primary/10 text-primary border border-primary/30'
-                  : 'bg-bg-surface border border-border/40 text-text-secondary hover:border-primary/30 hover:text-text-primary'
-              }`}
-            >
-              {chip.icon}
-              <span>{chip.lbl}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Status chips + Filter toggle */}
         <div className="flex items-center gap-2 flex-wrap">
-          {['semua', 'ongoing', 'completed', 'upcoming'].map(status => {
-            const labels: Record<string, string> = { semua: 'Semua Status', ongoing: 'Ongoing', completed: 'Tamat', upcoming: 'Upcoming' };
-            return (
-              <button
-                key={status}
-                onClick={() => updateParam('status', status === filterStatus ? 'semua' : status)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
-                  filterStatus === status
-                    ? 'bg-green-500/10 text-green-400 border border-green-500/30'
-                    : 'bg-bg-elevated text-muted hover:text-text-secondary border border-transparent'
-                }`}
-              >
-                {labels[status]}
-              </button>
-            );
-          })}
-
-          <div className="flex-1" />
-
-          {isFilterActive && (
-            <button
-              onClick={resetFilters}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-primary hover:text-primary-light transition-colors"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Reset
-            </button>
-          )}
-
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -420,14 +264,23 @@ export const BrowsePage: React.FC = () => {
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{showFilters ? 'Tutup' : 'Filter'}</span>
+            <span className="hidden sm:inline">{showFilters ? 'Tutup' : 'Genre'}</span>
           </button>
+
+          {filterGenre !== 'Semua' && (
+            <button
+              onClick={() => updateParam('genre', 'Semua')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-primary hover:text-primary-light transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset
+            </button>
+          )}
         </div>
 
-        {/* Advanced Filters Panel */}
+        {/* Genre Panel */}
         {showFilters && (
           <div className="bg-bg-surface/80 backdrop-blur-sm border border-border/30 rounded-2xl p-5 sm:p-6 animate-scale-up space-y-5">
-            {/* Genre Section */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
@@ -452,7 +305,7 @@ export const BrowsePage: React.FC = () => {
                       filterGenre === g
                         ? 'bg-primary text-black'
                         : 'bg-bg-elevated text-text-secondary hover:text-text-primary border border-border/30 hover:border-primary/30'
-                    }`}
+                  }`}
                   >
                     {g}
                   </button>
@@ -462,22 +315,11 @@ export const BrowsePage: React.FC = () => {
           </div>
         )}
 
-        {/* Active Filter Tags */}
-        {isFilterActive && (
+        {/* Active Genre Tag */}
+        {filterGenre !== 'Semua' && (
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Filter:</span>
-            {filterType !== 'semua' && (
-              <FilterTag label={`Tipe: ${filterType}`} onRemove={() => updateParam('type', 'semua')} />
-            )}
-            {filterGenre !== 'Semua' && (
-              <FilterTag label={`Genre: ${filterGenre}`} onRemove={() => updateParam('genre', 'Semua')} />
-            )}
-            {filterStatus !== 'semua' && (
-              <FilterTag label={`Status: ${filterStatus}`} onRemove={() => updateParam('status', 'semua')} />
-            )}
-            {filterSort !== 'latest' && (
-              <FilterTag label={`Urutan: ${filterSort}`} onRemove={() => updateParam('sort', 'latest')} />
-            )}
+            <FilterTag label={`Genre: ${filterGenre}`} onRemove={() => updateParam('genre', 'Semua')} />
           </div>
         )}
       </div>
@@ -509,9 +351,7 @@ export const BrowsePage: React.FC = () => {
             >
               {item.isAnime ? (
                 <AnimeCard apiAnime={item as any} />
-              ) : (
-                <MangaCard manga={item as any} />
-              )}
+              ) : null}
             </div>
           ))}
         </div>

@@ -171,6 +171,56 @@ interface SimilarAnimeResponse {
 
 interface AnimeGenreResponse extends ApiPaginatedResponse<ApiAnime> {}
 
+export interface SearchHistoryItem {
+  id: number;
+  user_id: number;
+  query: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SearchHistoryResponse {
+  success: boolean;
+  message: string;
+  data: {
+    items: SearchHistoryItem[];
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
+
+export interface ImageSearchResponse {
+  status: number;
+  message: string;
+  candidates: string[];
+  matches: ApiAnime[];
+}
+
+export interface CatalogResponse {
+  status: number;
+  message: string;
+  data: {
+    mode: 'all' | 'single';
+    letter?: string;
+    available_letters?: string[];
+    catalog: Record<string, any[]>;
+    pagination?: any;
+    meta: any;
+  };
+}
+
+export interface AZResponse {
+  status: number;
+  message: string;
+  items: ApiAnime[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  order: string;
+}
+
 /* ═══════════════════════════════════════════════════════════════════ */
 /* Endpoint functions                                                  */
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -181,6 +231,7 @@ export async function fetchAnimeList(opts?: {
   limit?: number;
   type?: string;
   contentType?: string;
+  status?: string;
   sortBy?: string;
   order?: string;
 }): Promise<AnimeListResponse> {
@@ -189,6 +240,7 @@ export async function fetchAnimeList(opts?: {
     limit: opts?.limit,
     type: opts?.type,
     contentType: opts?.contentType,
+    status: opts?.status,
     sortBy: opts?.sortBy,
     order: opts?.order,
   });
@@ -314,10 +366,20 @@ export async function fetchAnimeGenres(): Promise<AnimeGenresResponse> {
 export async function fetchAnimeByGenre(genre: string, opts?: {
   page?: number;
   limit?: number;
+  type?: string;
+  contentType?: string;
+  status?: string;
+  sortBy?: string;
+  order?: string;
 }): Promise<AnimeGenreResponse> {
   const res = await get<AnimeGenreResponse>(`/anime/genre/${encodeURIComponent(genre)}`, {
     page: opts?.page,
     limit: opts?.limit,
+    type: opts?.type,
+    contentType: opts?.contentType,
+    status: opts?.status,
+    sortBy: opts?.sortBy,
+    order: opts?.order,
   });
   if (res.items) {
     res.items = res.items.map(cleanAnime);
@@ -326,8 +388,18 @@ export async function fetchAnimeByGenre(genre: string, opts?: {
 }
 
 /** GET /anime/status/:status — anime filtered by status */
-export async function fetchAnimeByStatus(status: string): Promise<AnimeListResponse> {
-  const res = await get<AnimeListResponse>(`/anime/status/${encodeURIComponent(status)}`);
+export async function fetchAnimeByStatus(status: string, opts?: {
+  page?: number;
+  limit?: number;
+  type?: string;
+  contentType?: string;
+}): Promise<AnimeListResponse> {
+  const res = await get<AnimeListResponse>(`/anime/status/${encodeURIComponent(status)}`, {
+    page: opts?.page,
+    limit: opts?.limit,
+    type: opts?.type,
+    contentType: opts?.contentType,
+  });
   if (res.data) {
     res.data = res.data.map(cleanAnime);
   }
@@ -379,6 +451,89 @@ export async function fetchRelatedAnime(id: number | string): Promise<RelatedAni
     res.data.relatedAnime = res.data.relatedAnime.map(cleanAnime);
   }
   return res;
+}
+
+/** GET /anime/related-by-alias — find related by specific alias */
+export async function fetchRelatedByAlias(alias: string): Promise<RelatedAnimeResponse> {
+  const res = await get<RelatedAnimeResponse>('/anime/related-by-alias', { alias });
+  if (res.data && res.data.relatedAnime) {
+    res.data.relatedAnime = res.data.relatedAnime.map(cleanAnime);
+  }
+  return res;
+}
+
+/** GET /anime/catalog — catalog A-Z grouped */
+export async function fetchAnimeCatalog(opts?: {
+  letter?: string;
+  page?: number;
+  limit_per_group?: number;
+}): Promise<CatalogResponse> {
+  return get<CatalogResponse>('/anime/catalog', opts);
+}
+
+/** GET /anime/a-z — paginated A-Z */
+export async function fetchAnimeAZ(opts?: {
+  page?: number;
+  limit?: number;
+  letter?: string;
+  genre?: string;
+  studio?: string;
+  order?: string;
+}): Promise<AZResponse> {
+  return get<AZResponse>('/anime/a-z', opts);
+}
+
+/** POST /anime/image-search — search by image */
+export async function searchByImage(file?: File, imageUrl?: string): Promise<ImageSearchResponse> {
+  const url = new URL(`${BASE_URL}/anime/image-search`);
+  let res: Response;
+  
+  if (file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { ...authHeaders(), Accept: 'application/json' },
+      body: formData,
+    });
+  } else if (imageUrl) {
+    res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ image_url: imageUrl }),
+    });
+  } else {
+    throw new Error('Please provide an image file or URL');
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || `Server error ${res.status}`);
+  }
+  if (data.matches) {
+    data.matches = data.matches.map(cleanAnime);
+  }
+  return data as ImageSearchResponse;
+}
+
+/** GET /anime/search-history */
+export async function fetchSearchHistory(opts?: { page?: number; limit?: number }): Promise<SearchHistoryResponse> {
+  return get<SearchHistoryResponse>('/anime/search-history', opts);
+}
+
+/** POST /anime/search-history */
+export async function addSearchHistory(query: string): Promise<any> {
+  return sendRequest('POST', '/anime/search-history', { query });
+}
+
+/** DELETE /anime/search-history/:id */
+export async function deleteSearchHistory(id: number | string): Promise<any> {
+  return sendRequest('DELETE', `/anime/search-history/${id}`);
+}
+
+/** DELETE /anime/search-history */
+export async function clearSearchHistory(): Promise<any> {
+  return sendRequest('DELETE', '/anime/search-history');
 }
 
 /* ═══════════════════════════════════════════════════════════════════ */

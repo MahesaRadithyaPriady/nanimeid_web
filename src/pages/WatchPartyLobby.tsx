@@ -264,13 +264,13 @@ export const WatchPartyLobby: React.FC = () => {
   return (
     <div className="space-y-8 pb-12 text-left">
       {/* Hero Header */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-purple-900/40 via-pink-900/20 to-black border border-white/10 p-8 md:p-12 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="relative rounded-3xl overflow-hidden bg-purple-500/ dark:from-purple-900/40 dark:via-pink-900/20 dark:to-black border border-border/40 dark:border-white/10 p-8 md:p-12 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="space-y-4 max-w-xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/25 border border-primary/20 text-xs font-semibold text-primary">
             <Users className="w-4.5 h-4.5" /> Nobar V2
           </div>
-          <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white">
-            Nonton Bareng <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-400">Real-Time</span>
+          <h1 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary dark:text-white">
+            Nonton Bareng <span className="text-pink-500">Real-Time</span>
           </h1>
           <p className="text-text-secondary text-sm md:text-base leading-relaxed">
             Buat ruang bioskop virtual Anda sendiri. Cari anime terbaru, sinkronkan pemutaran video secara presisi, gunakan micro-signaling voice chat (WebRTC), dan diskusikan tayangan favorit Anda dalam obrolan chat real-time.
@@ -290,13 +290,13 @@ export const WatchPartyLobby: React.FC = () => {
                   setShowCreateModal(true);
                 }
               }}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/35 active:scale-95 flex items-center gap-2 text-sm"
+              className="px-5 py-2.5 rounded-xl bg-pink-500 hover:from-pink-600 hover:to-purple-700 text-white font-bold transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/35 active:scale-95 flex items-center gap-2 text-sm"
             >
               <Plus className="w-4.5 h-4.5" /> Buat Room Baru
             </button>
             <button
               onClick={loadSessions}
-              className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 hover:border-white/20 transition-all font-semibold active:scale-95 text-sm"
+              className="px-5 py-2.5 rounded-xl bg-bg-surface dark:bg-white/5 border border-border/40 dark:border-white/10 text-text-primary dark:text-white hover:bg-bg-elevated dark:hover:bg-white/10 transition-all font-semibold active:scale-95 text-sm"
             >
               Segarkan List
             </button>
@@ -304,8 +304,8 @@ export const WatchPartyLobby: React.FC = () => {
         </div>
 
         {/* Invite Code Quick Join box */}
-        <div className="w-full md:w-80 bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 space-y-4">
-          <h3 className="font-bold text-white flex items-center gap-2 text-sm">
+        <div className="w-full md:w-80 bg-bg-surface/60 dark:bg-black/60 backdrop-blur-xl border border-border/40 dark:border-white/10 rounded-2xl p-6 space-y-4 shadow-lg">
+          <h3 className="font-bold text-text-primary dark:text-white flex items-center gap-2 text-sm">
             <Key className="w-4 h-4 text-primary" /> Masuk via Kode Room
           </h3>
           <form onSubmit={handleJoinWithCode} className="space-y-3">
@@ -314,12 +314,12 @@ export const WatchPartyLobby: React.FC = () => {
               placeholder="CONTOH: ABC1D2"
               value={inviteCodeInput}
               onChange={(e) => setInviteCodeInput(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-center text-lg font-bold tracking-widest text-white placeholder:text-text-secondary/35 uppercase focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+              className="w-full bg-bg-base/50 dark:bg-white/5 border border-border/40 dark:border-white/10 rounded-xl px-4 py-2.5 text-center text-lg font-bold tracking-widest text-text-primary dark:text-white placeholder:text-text-secondary/50 dark:placeholder:text-text-secondary/35 uppercase focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
             />
             <button
               type="submit"
               disabled={joining || !inviteCodeInput.trim()}
-              className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-sm border border-white/10"
+              className="w-full py-2.5 rounded-xl bg-bg-base hover:bg-bg-elevated dark:bg-white/10 dark:hover:bg-white/15 text-text-primary dark:text-white font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-sm border border-border/40 dark:border-white/10"
             >
               {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Gabung'}
               <ArrowRight className="w-4 h-4" />
@@ -414,7 +414,7 @@ export const WatchPartyLobby: React.FC = () => {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-950/20 to-black">
+                    <div className="w-full h-full flex items-center justify-center bg-bg-elevated">
                       <BookOpen className="w-10 h-10 text-white/10" />
                     </div>
                   )}
@@ -443,7 +443,7 @@ export const WatchPartyLobby: React.FC = () => {
                   <div className="flex items-center justify-between border-t border-white/5 pt-4">
                     {/* Host avatar/details */}
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 to-purple-600 text-white font-bold text-[10px] flex items-center justify-center border border-white/20 select-none shadow">
+                      <div className="w-7 h-7 rounded-full bg-pink-500 text-white font-bold text-[10px] flex items-center justify-center border border-white/20 select-none shadow">
                         H
                       </div>
                       <div className="text-left leading-none">
@@ -755,7 +755,7 @@ export const WatchPartyLobby: React.FC = () => {
                   <button
                     type="submit"
                     disabled={creating}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold text-xs shadow-lg shadow-pink-500/10 flex items-center gap-2"
+                    className="px-5 py-2.5 rounded-xl bg-pink-500 hover:from-pink-600 hover:to-purple-700 text-white font-bold text-xs shadow-lg shadow-pink-500/10 flex items-center gap-2"
                   >
                     {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Buat & Gabung'}
                   </button>

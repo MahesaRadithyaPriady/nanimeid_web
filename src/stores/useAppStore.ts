@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { Bookmark, WatchHistory, Anime, Manga } from '../types';
+import type { Bookmark, WatchHistory, Anime } from '../types';
 import { fetchAnimeDetail } from '../lib/animeApi';
 import { fetchMyProfile } from '../lib/profileApi';
+import { getWallet } from '../lib/storeApi';
 
 export interface ToastMessage {
   id: string;
@@ -56,6 +57,13 @@ interface AppState {
   sidebarExpanded: boolean;
   mobileMenuOpen: boolean;
   activeToasts: ToastMessage[];
+  theme: 'dark' | 'light';
+  
+  toggleSidebar: () => void;
+  toggleMobileMenu: (open?: boolean) => void;
+  addToast: (type: ToastMessage['type'], message: string) => void;
+  removeToast: (id: string) => void;
+  toggleTheme: () => void;
   
   // Settings & Preferences
   videoVolume: number;
@@ -68,11 +76,7 @@ interface AppState {
   watchHistory: WatchHistory[];
   
   // UI Actions
-  toggleSidebar: () => void;
   setSidebarExpanded: (expanded: boolean) => void;
-  toggleMobileMenu: (open?: boolean) => void;
-  addToast: (type: 'success' | 'error' | 'info', message: string) => void;
-  removeToast: (id: string) => void;
   
   // Settings Actions
   setVideoVolume: (volume: number) => void;
@@ -81,9 +85,9 @@ interface AppState {
   updateProfile: (profile: Partial<UserProfile>) => void;
   
   // Bookmark Actions
-  addBookmark: (item: Anime | Manga) => void;
-  removeBookmark: (itemId: string, itemType: 'anime' | 'manga') => void;
-  isBookmarked: (itemId: string, itemType: 'anime' | 'manga') => boolean;
+  addBookmark: (item: Anime) => void;
+  removeBookmark: (itemId: string, itemType: 'anime') => void;
+  isBookmarked: (itemId: string, itemType: 'anime') => boolean;
   
   // History Actions
   addWatchHistory: (
@@ -144,7 +148,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { authToken, isLoggedIn, logout } = get();
     if (!authToken || !isLoggedIn) return;
     try {
-      const res = await fetchMyProfile();
+      const [res, walletRes] = await Promise.all([
+        fetchMyProfile().catch(() => null),
+        getWallet().catch(() => null)
+      ]);
+      
       if (res && res.data) {
         const apiUser = res.data;
         const profile: Partial<UserProfile> = {
@@ -161,6 +169,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isVip: apiUser.vip?.status === 'ACTIVE' || !!apiUser.vip,
           level: apiUser.level?.level_number || 1,
           xp: apiUser.stats?.xp || 0,
+          coins: walletRes?.balance_coins ?? 0,
           minutesWatched: apiUser.stats?.minutes_watched || 0,
           likes: apiUser.stats?.likes_received || apiUser.stats?.likes || 0,
           commentsCount: apiUser.stats?.comments_count || 0,
@@ -182,11 +191,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // UI
-  sidebarExpanded: true,
-  mobileMenuOpen: false,
-  activeToasts: [],
-  
   // Settings
   videoVolume: loadSavedState('volume', 0.8),
   videoQuality: loadSavedState('quality', '720p'),
@@ -207,11 +211,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Data
   bookmarks: loadSavedState('bookmarks', []),
   watchHistory: loadSavedState('watch_history', []),
+  sidebarExpanded: loadSavedState('sidebar_expanded', true),
+  mobileMenuOpen: false,
+  activeToasts: [],
+  theme: (() => {
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved) {
+        // Handle both JSON stringified and raw string
+        return saved.replace(/['"]+/g, '') as 'dark' | 'light';
+      }
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        return 'light';
+      }
+    } catch {}
+    return 'dark';
+  })(),
 
-  // UI Actions
-  toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
+  toggleSidebar: () => set((state) => {
+    const newState = !state.sidebarExpanded;
+    saveState('sidebar_expanded', newState);
+    return { sidebarExpanded: newState };
+  }),
   setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
-  toggleMobileMenu: (open) => set((state) => ({ mobileMenuOpen: open !== undefined ? open : !state.mobileMenuOpen })),
+  
+  toggleMobileMenu: (open) => set((state) => ({ 
+    mobileMenuOpen: open !== undefined ? open : !state.mobileMenuOpen 
+  })),
+
+  toggleTheme: () => set((state) => {
+    const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('theme', newTheme); } catch {}
+    return { theme: newTheme };
+  }),
   
   addToast: (type, message) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -251,26 +283,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Bookmark Actions
   addBookmark: (item) => set((state) => {
-    const exists = state.bookmarks.some((b) => b.itemId === item.id && b.itemType === item.type);
+    const exists = state.bookmarks.some((b) => b.itemId === item.id && b.itemType === 'anime');
     if (exists) return {};
     
     const newBookmark: Bookmark = {
-      id: `${item.type}-${item.id}`,
+      id: `anime-${item.id}`,
       itemId: item.id,
-      itemType: item.type === 'anime' ? 'anime' : 'manga',
+      itemType: 'anime',
       title: item.title,
       slug: item.slug,
-      coverUrl: item.type === 'anime' ? item.posterUrl : item.coverUrl,
-      progressText: item.type === 'anime' ? 'Belum ditonton' : 'Belum dibaca',
+      coverUrl: item.posterUrl,
+      progressText: 'Belum ditonton',
       lastAccessedAt: Date.now()
     };
     const updated = [newBookmark, ...state.bookmarks];
     saveState('bookmarks', updated);
     
     // Update count in profile
-    const profileUpdate = item.type === 'anime' 
-      ? { animeCount: state.userProfile.animeCount + 1 }
-      : { mangaCount: state.userProfile.mangaCount + 1 };
+    const profileUpdate = { animeCount: state.userProfile.animeCount + 1 };
     
     setTimeout(() => {
       get().updateProfile(profileUpdate);
@@ -284,9 +314,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     saveState('bookmarks', updated);
     
     // Update count in profile
-    const countKey = itemType === 'anime' ? 'animeCount' : 'mangaCount';
-    const currentVal = state.userProfile[countKey];
-    const profileUpdate = { [countKey]: Math.max(0, currentVal - 1) };
+    const currentVal = state.userProfile.animeCount;
+    const profileUpdate = { animeCount: Math.max(0, currentVal - 1) };
     
     setTimeout(() => {
       get().updateProfile(profileUpdate);

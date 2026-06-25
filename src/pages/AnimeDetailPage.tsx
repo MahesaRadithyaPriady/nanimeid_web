@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Play, Star, Search, ArrowUpDown, Share2, ArrowLeft, Loader2, Heart } from 'lucide-react';
+import { Play, Star, Search, ArrowUpDown, Share2, ArrowLeft, Heart, Loader2 } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
 import { Badge } from '../components/ui/Badge';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { EpisodeCard } from '../components/cards/EpisodeCard';
+import { UserAvatar } from '../components/ui/UserAvatar';
+import { SkeletonHeroBanner, SkeletonEpisodeList } from '../components/cards/SkeletonCard';
 import type { ApiAnime, ApiEpisode } from '../types';
-import { fetchAnimeDetail, fetchSimilarAnime, checkAnimeFavoriteStatus, addAnimeToFavorite, removeAnimeFromFavorite } from '../lib/animeApi';
+import { fetchAnimeDetail, fetchSimilarAnime, fetchRelatedAnime, checkAnimeFavoriteStatus, addAnimeToFavorite, removeAnimeFromFavorite } from '../lib/animeApi';
 
 export const AnimeDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +24,7 @@ export const AnimeDetailPage: React.FC = () => {
   const [anime, setAnime] = useState<ApiAnime | null>(null);
   const [episodes, setEpisodes] = useState<ApiEpisode[]>([]);
   const [relatedAnimes, setRelatedAnimes] = useState<ApiAnime[]>([]);
+  const [relatedSeries, setRelatedSeries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,9 +47,10 @@ export const AnimeDetailPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const [detailRes, similarRes] = await Promise.allSettled([
+        const [detailRes, similarRes, relatedRes] = await Promise.allSettled([
           fetchAnimeDetail(id!),
           fetchSimilarAnime(id!, { limit: 6 }),
+          fetchRelatedAnime(id!),
         ]);
 
         if (cancelled) return;
@@ -61,6 +65,10 @@ export const AnimeDetailPage: React.FC = () => {
         if (similarRes.status === 'fulfilled') {
           setRelatedAnimes(similarRes.value.data ?? []);
         }
+
+        if (relatedRes.status === 'fulfilled') {
+          setRelatedSeries(relatedRes.value.data?.relatedAnime ?? []);
+        }
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? 'Terjadi kesalahan');
       } finally {
@@ -74,8 +82,11 @@ export const AnimeDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      <div className="pb-16 space-y-8 animate-fade-in">
+        <SkeletonHeroBanner />
+        <div className="max-w-4xl mx-auto px-4 mt-8">
+          <SkeletonEpisodeList count={5} />
+        </div>
       </div>
     );
   }
@@ -184,7 +195,7 @@ export const AnimeDetailPage: React.FC = () => {
             alt={anime.nama_anime}
             className="w-full h-full object-cover filter blur-3xl opacity-30 scale-125 select-none pointer-events-none"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-bg-surface to-transparent" />
+          <div className="absolute inset-0 bg-bg-surface/80" />
         </div>
 
         {/* Detail Content Overlay */}
@@ -243,7 +254,7 @@ export const AnimeDetailPage: React.FC = () => {
               {anime.content_type === 'FILM' ? (
                 <button
                   onClick={() => navigate(`/watch/${anime.id}/ep/1`, { state: { fromDetail: true } })}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-primary-light text-black font-semibold text-sm rounded-xl shadow-glow hover:opacity-95 hover:scale-[1.02] active:scale-95 transition-all"
+                  className="flex items-center gap-2 px-6 py-3 bg-primary text-black font-semibold text-sm rounded-xl shadow-glow hover:opacity-95 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   <Play className="w-4 h-4 fill-black text-black" />
                   <span>Tonton Film</span>
@@ -251,7 +262,7 @@ export const AnimeDetailPage: React.FC = () => {
               ) : episodes.length > 0 ? (
                 <button
                   onClick={() => navigate(`/watch/${anime.id}/ep/${lastWatchedEpisodeNum}`, { state: { fromDetail: true } })}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-primary-light text-black font-semibold text-sm rounded-xl shadow-glow hover:opacity-95 hover:scale-[1.02] active:scale-95 transition-all"
+                  className="flex items-center gap-2 px-6 py-3 bg-primary text-black font-semibold text-sm rounded-xl shadow-glow hover:opacity-95 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   <Play className="w-4 h-4 fill-black text-black" />
                   <span>
@@ -372,6 +383,20 @@ export const AnimeDetailPage: React.FC = () => {
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* Related Anime (Seasons/OVA) */}
+      {relatedSeries.length > 0 && (
+        <div className="space-y-4 text-left pt-4">
+          <h3 className="text-lg font-bold font-heading text-text-primary">Koleksi & Versi Terkait</h3>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x scroll-smooth -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8 pb-4">
+            {relatedSeries.map((a) => (
+              <div key={a.id} className="w-[140px] sm:w-[170px] md:w-[200px] shrink-0 snap-start animate-fade-in">
+                <AnimeCard apiAnime={a} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

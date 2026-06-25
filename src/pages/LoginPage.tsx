@@ -46,9 +46,9 @@ const LoginButtonShell: React.FC<{
   <button
     onClick={onClick}
     disabled={isLoading}
-    className="w-full flex items-center justify-center gap-3 h-12 px-6 rounded-xl bg-bg-elevated hover:bg-[#242424] border border-border/80 hover:border-primary/40 text-text-primary font-semibold text-sm transition-all duration-200 hover:shadow-[0_4px_24px_rgba(255,102,205,0.15)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 group relative overflow-hidden"
+    className="w-full flex items-center justify-center gap-3 h-12 px-6 rounded-xl bg-bg-elevated hover:bg-bg-surface border border-border/80 hover:border-primary/40 text-text-primary font-semibold text-sm transition-all duration-200 hover:shadow-[0_4px_24px_rgba(255,102,205,0.15)] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 group relative overflow-hidden"
   >
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.04] to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700 pointer-events-none" />
+    <div className="absolute inset-0 pointer-events-none" />
     {isLoading ? (
       <>
         <div className="w-5 h-5 border-2 border-border border-t-primary rounded-full animate-spin" />
@@ -72,7 +72,7 @@ const GoogleOAuthButton: React.FC<{
 }> = ({ isLoading, onStart, onDone, onFail }) => {
   if (isLoading) {
     return (
-      <div className="w-full flex flex-col items-center justify-center py-6 space-y-3 bg-[#121212]/40 border border-border/40 rounded-xl animate-pulse">
+      <div className="w-full flex flex-col items-center justify-center py-6 space-y-3 bg-bg-base/40 border border-border/40 rounded-xl animate-pulse">
         <div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin" />
         <span className="text-xs text-muted font-medium">Menghubungkan ke Google...</span>
       </div>
@@ -165,7 +165,7 @@ export const LoginPage: React.FC = () => {
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* LEFT PANEL — Brand visual (desktop only)                     */}
       {/* ══════════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex relative flex-1 bg-[#0a0a0a] overflow-hidden items-center justify-center">
+      <div className="hidden lg:flex relative flex-1 bg-bg-base overflow-hidden items-center justify-center">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-primary/[0.07] blur-[100px] pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] rounded-full bg-primary/[0.05] blur-[80px] pointer-events-none" />
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `linear-gradient(rgba(255,102,205,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,102,205,0.4) 1px, transparent 1px)`, backgroundSize: '48px 48px' }} />
@@ -179,7 +179,7 @@ export const LoginPage: React.FC = () => {
 
         <div className="relative z-10 flex flex-col items-center px-16 text-center select-none">
           <div className="relative mb-8">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary-light/10 border border-primary/30 flex items-center justify-center shadow-glow">
+            <div className="w-20 h-20 rounded-2xl bg-primary/ border border-primary/30 flex items-center justify-center shadow-glow">
               <img src="/logo.png" alt="NanimeID" className="w-12 h-12 object-contain" />
             </div>
             <div className="absolute inset-[-6px] rounded-[22px] border border-primary/20 animate-pulse" />
@@ -222,13 +222,13 @@ export const LoginPage: React.FC = () => {
 
           {/* Mobile logo */}
           <div className="flex flex-col items-center mb-10 lg:hidden">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary-light/10 border border-primary/30 flex items-center justify-center shadow-glow mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-primary/ border border-primary/30 flex items-center justify-center shadow-glow mb-4">
               <img src="/logo.png" alt="NanimeID" className="w-10 h-10 object-contain" />
             </div>
             <span className="font-heading font-black text-3xl tracking-tight">
               <span className="text-text-primary">NANIME</span><span className="text-primary">ID</span>
             </span>
-            <p className="text-muted text-xs mt-1.5 text-center">Portal anime & manga Indonesia</p>
+            <p className="text-muted text-xs mt-1.5 text-center">Portal anime Indonesia</p>
           </div>
 
           {/* Heading */}

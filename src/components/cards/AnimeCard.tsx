@@ -142,13 +142,13 @@ export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
 
         {/* Top-Left Rating & Status Badges */}
         <div className="absolute top-2.5 left-2.5 z-20 flex flex-wrap gap-1.5">
-          <Badge variant="rating" className="flex items-center gap-1 bg-black/60 backdrop-blur-md border border-white/10 font-bold px-2 py-0.5 text-[10px]">
+          <Badge variant="rating" className="flex items-center gap-1 bg-black/60 backdrop-blur-md border border-white/10 text-white font-bold px-2 py-0.5 text-[10px]">
             <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
             <span>{n.rating.toFixed(1)}</span>
           </Badge>
           <Badge 
             variant={statusVariant} 
-            className="bg-black/60 backdrop-blur-md border border-white/10 uppercase text-[9px] font-bold px-2 py-0.5"
+            className="bg-black/60 backdrop-blur-md border border-white/10 text-white uppercase text-[9px] font-bold px-2 py-0.5"
           >
             {n.statusRaw}
           </Badge>
@@ -157,7 +157,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
         {/* Top-Right Quick Bookmark Overlay */}
         <button
           onClick={handleBookmarkToggle}
-          className={`absolute top-2.5 right-2.5 z-20 p-2 bg-black/70 backdrop-blur-sm text-text-primary rounded-full hover:bg-black/95 hover:text-primary transition-all active:scale-90 shadow-md ${
+          className={`absolute top-2.5 right-2.5 z-20 p-2 bg-black/70 backdrop-blur-sm text-white rounded-full hover:bg-black/95 hover:text-primary transition-all active:scale-90 shadow-md ${
             bookmarked ? 'opacity-100 scale-100 text-primary border border-primary/30' : 'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100'
           }`}
           aria-label={bookmarked ? "Hapus dari tersimpan" : "Simpan anime"}
@@ -171,7 +171,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
 
         {/* Bottom-Right Episode Badge */}
         <div className="absolute bottom-2.5 right-2.5 z-20">
-          <Badge variant="episode" className="bg-black/85 backdrop-blur-sm border border-white/5 font-bold px-2 py-0.5 rounded text-[10px]">
+          <Badge variant="episode" className="bg-black/85 backdrop-blur-sm border border-white/5 text-white font-bold px-2 py-0.5 rounded text-[10px]">
             {statusNorm.includes('ongoing') ? `Ep ${n.episodeCount}` : statusNorm.includes('upcoming') ? 'Segera' : 'Tamat'}
           </Badge>
         </div>
@@ -180,7 +180,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
         {watchProgress > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40 z-20">
             <div 
-              className="h-full bg-gradient-to-r from-primary to-primary-light" 
+              className="h-full bg-primary" 
               style={{ width: `${watchProgress * 100}%` }}
             />
           </div>
@@ -205,13 +205,16 @@ export const AnimeCard: React.FC<AnimeCardProps> = (props) => {
         </h4>
         
         {/* Stats & Genres */}
-        <div className="mt-1.5 flex items-center flex-wrap gap-1 text-[11px] text-muted font-medium">
-          <span className="font-mono text-[10px]">{n.genres[0] ?? ''}</span>
-          <span className="text-border/60">•</span>
-          <span>★ {n.rating.toFixed(1)}</span>
+        <div className="mt-1.5 flex items-center flex-wrap gap-1.5 text-[11px] text-muted font-medium">
+          <span className="font-mono text-[10px] text-text-secondary dark:text-muted">{n.genres[0] ?? ''}</span>
+          <span className="text-border dark:text-muted/40">•</span>
+          <span className="flex items-center gap-0.5 text-yellow-600 dark:text-yellow-400">
+            <Star className="w-2.5 h-2.5 fill-yellow-400 text-yellow-400" />
+            {n.rating.toFixed(1)}
+          </span>
           {n.viewCount !== undefined && (
             <>
-              <span className="text-border/60">•</span>
+              <span className="text-border dark:text-muted/40">•</span>
               <span>{n.viewCount} views</span>
             </>
           )}

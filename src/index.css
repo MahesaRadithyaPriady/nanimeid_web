@@ -3,8 +3,141 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-bg-base text-text-primary font-sans antialiased;
+  :root {
+    /* LIGHT MODE */
+    --color-bg-base: 247 247 248;      /* #f7f7f8 */
+    --color-bg-surface: 255 255 255;   /* #ffffff */
+    --color-bg-elevated: 249 249 249;  /* #f9f9f9 */
+    --color-bg-sidebar: 251 251 251;   /* #fbfbfb */
+    --color-text-primary: 17 17 17;    /* #111111 */
+    --color-text-secondary: 102 102 102; /* #666666 */
+    --color-border: 229 229 229;       /* #e5e5e5 */
+  }
+
+  .dark {
+    /* DARK MODE */
+    --color-bg-base: 13 13 13;         /* #0d0d0d */
+    --color-bg-surface: 22 22 22;      /* #161616 */
+    --color-bg-elevated: 31 31 31;     /* #1f1f1f */
+    --color-bg-sidebar: 17 17 17;      /* #111111 */
+    --color-text-primary: 240 240 240; /* #f0f0f0 */
+    --color-text-secondary: 170 170 170; /* #aaaaaa */
+    --color-border: 42 42 42;          /* #2a2a2a */
+    --color-border-accent: 255 102 205; /* fallback to primary for dark mode */
+    --color-bg-active: 255 255 255; /* used with alpha for dark mode */
+  }
+
+  html[data-theme="light"], .light {
+    /* LIGHT MODE */
+    --color-bg-base: 253 247 251;      /* #fdf7fb */
+    --color-bg-sidebar: 243 234 240;   /* #f3eaf0 */
+    --color-bg-surface: 255 255 255;   /* #ffffff */
+    --color-bg-elevated: 255 245 251;  /* #fff5fb */
+    --color-text-primary: 26 26 26;    /* #1a1a1a */
+    --color-text-secondary: 122 104 120; /* #7a6878 */
+    --color-border: 214 190 210;       /* stronger border for light #d6bed2 */
+    --color-border-accent: 245 192 232; /* #f5c0e8 */
+    --color-bg-active: 255 232 248;    /* #ffe8f8 */
+    scrollbar-color: #f5c0e8 #f3eaf0;
+  }
+}
+
+/* ========================================================= */
+/* GLOBAL: Klarifikasi opacity — komponen lebih solid/jelas   */
+/* ========================================================= */
+
+/* Border opacity — naikkan semua border rendah opacity */
+.border-border\/10  { border-color: rgb(var(--color-border) / 0.45) !important; }
+.border-border\/20  { border-color: rgb(var(--color-border) / 0.55) !important; }
+.border-border\/30  { border-color: rgb(var(--color-border) / 0.65) !important; }
+.border-border\/40  { border-color: rgb(var(--color-border) / 0.75) !important; }
+.border-border\/50  { border-color: rgb(var(--color-border) / 0.80) !important; }
+
+/* Background opacity pada bg-base — naikkan supaya lebih solid */
+.bg-bg-base\/20  { background-color: rgb(var(--color-bg-base) / 0.55) !important; }
+.bg-bg-base\/30  { background-color: rgb(var(--color-bg-base) / 0.65) !important; }
+.bg-bg-base\/40  { background-color: rgb(var(--color-bg-base) / 0.75) !important; }
+.bg-bg-base\/60  { background-color: rgb(var(--color-bg-base) / 0.85) !important; }
+.bg-bg-base\/80  { background-color: rgb(var(--color-bg-base) / 0.92) !important; }
+
+/* Background opacity pada bg-surface */
+.bg-bg-surface\/20  { background-color: rgb(var(--color-bg-surface) / 0.60) !important; }
+.bg-bg-surface\/30  { background-color: rgb(var(--color-bg-surface) / 0.70) !important; }
+.bg-bg-surface\/40  { background-color: rgb(var(--color-bg-surface) / 0.80) !important; }
+.bg-bg-surface\/50  { background-color: rgb(var(--color-bg-surface) / 0.85) !important; }
+.bg-bg-surface\/70  { background-color: rgb(var(--color-bg-surface) / 0.92) !important; }
+.bg-bg-surface\/80  { background-color: rgb(var(--color-bg-surface) / 0.95) !important; }
+
+/* Background opacity pada bg-elevated */
+.bg-bg-elevated\/20 { background-color: rgb(var(--color-bg-elevated) / 0.65) !important; }
+.bg-bg-elevated\/30 { background-color: rgb(var(--color-bg-elevated) / 0.75) !important; }
+.bg-bg-elevated\/40 { background-color: rgb(var(--color-bg-elevated) / 0.85) !important; }
+.bg-bg-elevated\/50 { background-color: rgb(var(--color-bg-elevated) / 0.90) !important; }
+
+/* Light mode: shadow dikurangi agar tidak terlalu tebal */
+html[data-theme="light"] .bg-bg-elevated.shadow-lg,
+html[data-theme="light"] .bg-bg-elevated.shadow-xl,
+html[data-theme="light"] .bg-bg-elevated.shadow-2xl,
+html[data-theme="light"] .absolute.bg-bg-elevated {
+    border-color: rgb(var(--color-border-accent)) !important;
+    box-shadow: 0 8px 32px rgba(255, 102, 205, 0.08) !important;
+}
+
+html[data-theme="light"] *:focus-visible {
+    outline: 2px solid rgb(var(--color-border-accent)) !important;
+    outline-offset: 2px;
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] select:focus {
+    border-color: rgb(var(--color-border-accent)) !important;
+    --tw-ring-color: rgb(var(--color-border-accent)) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+    color: #b8a8b5 !important;
+}
+
+html[data-theme="light"] .bg-primary\/10.text-primary,
+html[data-theme="light"] .bg-primary\/10.text-primary-light,
+html[data-theme="light"] .bg-primary\/20.text-primary,
+html[data-theme="light"] .bg-primary\/20.text-primary-light,
+html[data-theme="light"] .bg-primary\/10 .text-primary,
+html[data-theme="light"] .bg-primary\/10 .text-primary-light,
+html[data-theme="light"] .bg-primary\/20 .text-primary,
+html[data-theme="light"] .bg-primary\/20 .text-primary-light {
+    color: #cc3fa3 !important;
+}
+
+/* Shadow utilities — tipis di light mode */
+html[data-theme="light"] .shadow-sm    { box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
+html[data-theme="light"] .shadow       { box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important; }
+html[data-theme="light"] .shadow-md    { box-shadow: 0 2px 6px rgba(0,0,0,0.07) !important; }
+html[data-theme="light"] .shadow-lg    { box-shadow: 0 4px 12px rgba(0,0,0,0.07) !important; }
+html[data-theme="light"] .shadow-xl    { box-shadow: 0 6px 16px rgba(0,0,0,0.08) !important; }
+html[data-theme="light"] .shadow-2xl   { box-shadow: 0 8px 20px rgba(0,0,0,0.08) !important; }
+html[data-theme="light"] .shadow-inner { box-shadow: inset 0 1px 3px rgba(0,0,0,0.05) !important; }
+
+/* Pink glow shadows */
+html[data-theme="light"] .shadow-glow    { box-shadow: 0 0 8px rgba(255,102,205,0.12) !important; }
+html[data-theme="light"] .shadow-glow-lg { box-shadow: 0 4px 16px rgba(255,102,205,0.10) !important; }
+html[data-theme="light"] .shadow-glow-sm { box-shadow: 0 0 5px rgba(255,102,205,0.10) !important; }
+
+html[data-theme="light"] [class*="drop-shadow"] { filter: none !important; }
+
+html[data-theme="light"] .hover\:shadow-xl:hover   { box-shadow: 0 4px 12px rgba(0,0,0,0.07) !important; }
+html[data-theme="light"] .hover\:shadow-lg:hover   { box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important; }
+html[data-theme="light"] .hover\:shadow-2xl:hover  { box-shadow: 0 6px 16px rgba(0,0,0,0.08) !important; }
+html[data-theme="light"] .hover\:shadow-glow:hover { box-shadow: 0 0 8px rgba(255,102,205,0.12) !important; }
+
+
+
+
+@layer base {
+  html, body {
+    @apply bg-bg-base text-text-primary font-sans antialiased overflow-x-hidden w-full;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -12,18 +145,19 @@
   }
 }
 
+
 /* Custom Scrollbar for Pink Glow effect */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d0d0d;
+  background: rgb(var(--color-bg-base));
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: rgb(var(--color-border));
   border-radius: 9999px;
-  border: 2px solid #0d0d0d;
+  border: 2px solid rgb(var(--color-bg-base));
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #ff66cd;
@@ -56,7 +190,7 @@
 }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%);
+  background: linear-gradient(90deg, rgb(var(--color-bg-elevated)) 25%, rgb(var(--color-border)) 50%, rgb(var(--color-bg-elevated)) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite linear;
 }
@@ -246,6 +380,15 @@
   }
 }
 
+/* Toast disappearing progress bar */
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+.animate-toast-progress {
+  animation: toastProgress 4000ms linear forwards;
+}
+
 @keyframes playFlash {
   0% {
     transform: scale(0.6);
@@ -282,4 +425,43 @@
 
 .animate-float-up {
   animation: floatUp 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* =========================================================
+   VIDEO PLAYER: Nonaktifkan semua kontrol bawaan browser
+   (PiP, download, fullscreen, remote-playback, dll)
+   ========================================================= */
+
+/* Global video element — sembunyikan native controls panel sepenuhnya */
+#global-video-element {
+  /* Cegah PiP bawaan Chrome/Safari via CSS */
+  pointer-events: none; /* dihandle oleh overlay parent */
+}
+
+/* Sembunyikan seluruh native controls Chrome */
+#global-video-element::-webkit-media-controls {
+  display: none !important;
+}
+#global-video-element::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+#global-video-element::-webkit-media-controls-panel {
+  display: none !important;
+}
+#global-video-element::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+}
+#global-video-element::-webkit-media-controls-play-button {
+  display: none !important;
+}
+#global-video-element::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+}
+
+/* Khusus: sembunyikan tombol PiP bawaan di semua browser berbasis Chromium */
+video::-internal-media-controls-picture-in-picture-button {
+  display: none !important;
+}
+video::-webkit-media-controls-picture-in-picture-button {
+  display: none !important;
 }

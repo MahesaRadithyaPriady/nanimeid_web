@@ -4,6 +4,7 @@ import { Heart, Trash2, Compass, Loader2 } from 'lucide-react';
 import { AnimeCard } from '../components/cards/AnimeCard';
 import { useAppStore } from '../stores/useAppStore';
 import { fetchFavoriteAnimes, removeAnimeFromFavorite } from '../lib/animeApi';
+import { SkeletonGrid } from '../components/cards/SkeletonCard';
 
 export const FavoritesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -79,8 +80,8 @@ export const FavoritesPage: React.FC = () => {
 
       {/* 3. Feed Viewport */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
+          <SkeletonGrid count={12} />
         </div>
       ) : favorites.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">

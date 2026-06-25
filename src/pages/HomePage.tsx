@@ -14,17 +14,7 @@ import { fetchAnimeByView, fetchAnimeLatest, fetchAnimeRecommendations, fetchAni
 import { getLeaderboard } from '../lib/leaderboardApi';
 import type { LeaderboardEntry } from '../lib/leaderboardApi';
 import { UserAvatar } from '../components/ui/UserAvatar';
-
-/* ─── Skeleton loader for cards ────────────────────────────────────── */
-const CardSkeleton: React.FC = () => (
-  <div className="animate-pulse">
-    <div className="w-full aspect-[2/3] bg-bg-elevated rounded-2xl" />
-    <div className="mt-3 space-y-2 px-0.5">
-      <div className="h-3.5 bg-bg-elevated rounded w-4/5" />
-      <div className="h-2.5 bg-bg-elevated rounded w-3/5" />
-    </div>
-  </div>
-);
+import { SkeletonCard, SkeletonShelf, SkeletonLeaderboardPodium, SkeletonGrid } from '../components/cards/SkeletonCard';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -303,13 +293,7 @@ export const HomePage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="w-[140px] sm:w-[170px] md:w-[200px] shrink-0">
-                <CardSkeleton />
-              </div>
-            ))}
-          </div>
+          <SkeletonShelf />
         ) : (
           <div 
             ref={trendingScrollRef}
@@ -337,10 +321,11 @@ export const HomePage: React.FC = () => {
               <img 
                 src={editorPick.gambar_anime} 
                 alt={editorPick.nama_anime}
-                className="absolute inset-0 w-full h-full object-cover brightness-[0.7] group-hover:scale-[1.03] transition-transform duration-700"
+                className="absolute inset-0 w-full h-full object-cover brightness-[0.85] group-hover:scale-[1.03] transition-transform duration-700"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-bg-base/90 hidden md:block" />
-              <div className="absolute inset-0 bg-gradient-to-t from-bg-base/90 to-transparent md:hidden" />
+              {/* Inline style vignette untuk teks (kiri dan bawah) */}
+              <div style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.6) 0%, transparent 80%)' }} className="absolute inset-0 hidden md:block" />
+              <div style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)' }} className="absolute inset-0 md:hidden" />
               <div className="absolute top-4 left-4 z-10">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
@@ -359,7 +344,7 @@ export const HomePage: React.FC = () => {
                 {editorPick.nama_anime}
               </h2>
               <div className="flex items-center gap-2 text-xs text-text-secondary mb-3">
-                <span className="flex items-center gap-1 text-yellow-400">
+                <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
                   <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
                   <strong className="font-mono text-text-primary">{(editorPick.rating_anime ?? 0).toFixed(1)}</strong>
                 </span>
@@ -400,7 +385,7 @@ export const HomePage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex gap-3 items-center">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-yellow-500/20 to-amber-500/20 flex items-center justify-center shrink-0">
-              <Trophy className="w-5 h-5 text-yellow-400" />
+              <Trophy className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
             </div>
             <div>
               <h2 className="text-base md:text-lg font-bold font-heading text-text-primary tracking-tight leading-tight">
@@ -410,8 +395,8 @@ export const HomePage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between sm:justify-end gap-3">
-            <div className="flex bg-bg-elevated/50 p-1 rounded-xl border border-border/40">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex bg-bg-elevated/50 p-1 rounded-xl border border-border/40 self-start sm:self-auto">
               {(['daily', 'weekly', 'monthly'] as const).map((period) => (
                 <button
                   key={period}
@@ -429,7 +414,7 @@ export const HomePage: React.FC = () => {
 
             <RouterLink
               to="/leaderboard"
-              className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary-light transition-colors shrink-0"
+              className="flex items-center justify-center gap-0.5 text-xs font-semibold text-primary hover:text-primary-light transition-colors shrink-0 sm:self-auto self-end"
             >
               <span>Selengkapnya</span>
               <ChevronRight className="w-4.5 h-4.5" />
@@ -438,10 +423,7 @@ export const HomePage: React.FC = () => {
         </div>
 
         {loadingLeaderboard ? (
-          <div className="py-12 flex flex-col items-center justify-center">
-            <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
-            <p className="text-xs text-muted">Memuat data peringkat...</p>
-          </div>
+          <SkeletonLeaderboardPodium />
         ) : leaderboardEntries.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             {/* Podium Top 3 (col-span 7) */}
@@ -456,7 +438,7 @@ export const HomePage: React.FC = () => {
                         <UserAvatar
                           src={leaderboardEntries[1].user.avatarUrl}
                           name={leaderboardEntries[1].user.fullName || leaderboardEntries[1].user.username}
-                          className="w-14 h-14 rounded-full border-2 border-slate-400 shadow-lg group-hover:scale-105 transition-all"
+                          className="w-16 h-16 rounded-full border-2 border-slate-400 shadow-lg group-hover:scale-105 transition-all"
                         />
                         {leaderboardEntries[1].user.activeAvatarBorder && (
                           <img
@@ -466,7 +448,7 @@ export const HomePage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-slate-400 mt-2 font-bold text-xs truncate max-w-[80px]">
+                      <span className="text-slate-500 dark:text-slate-400 mt-2 font-bold text-xs truncate max-w-[80px]">
                         {leaderboardEntries[1].user.fullName || leaderboardEntries[1].user.username}
                       </span>
                       <span className="text-[10px] text-muted font-semibold mt-0.5">
@@ -474,8 +456,8 @@ export const HomePage: React.FC = () => {
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-slate-500/25 to-slate-500/5 border-t border-slate-500/30 rounded-t-xl h-16 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="text-2xl font-black text-slate-400 font-heading">2</div>
+                    <div className="w-full bg-gradient-to-t from-slate-500/25 to-slate-500/5 border-t border-slate-500/30 rounded-t-xl h-20 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-3xl font-black text-slate-500 dark:text-slate-400 font-heading">2</div>
                     </div>
                   </div>
                 )}
@@ -484,12 +466,12 @@ export const HomePage: React.FC = () => {
                 {leaderboardEntries[0] && (
                   <div className="flex flex-col items-center w-1/3 z-10 -mx-1">
                     <div className="relative group flex flex-col items-center">
-                      <Crown className="absolute -top-8 w-6 h-6 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)] animate-bounce" />
+                      <Crown className="absolute -top-8 w-7 h-7 text-yellow-600 dark:text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)] animate-bounce" />
                       <div className="relative flex items-center justify-center shrink-0">
                         <UserAvatar
                           src={leaderboardEntries[0].user.avatarUrl}
                           name={leaderboardEntries[0].user.fullName || leaderboardEntries[0].user.username}
-                          className="w-18 h-18 rounded-full border-4 border-yellow-400 shadow-glow-sm group-hover:scale-105 transition-all"
+                          className="w-20 h-20 rounded-full border-4 border-yellow-500 dark:border-yellow-400 shadow-glow-sm group-hover:scale-105 transition-all"
                         />
                         {leaderboardEntries[0].user.activeAvatarBorder && (
                           <img
@@ -499,16 +481,16 @@ export const HomePage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-yellow-400 mt-2 font-black text-sm truncate max-w-[95px] drop-shadow-[0_0_4px_rgba(250,204,21,0.2)]">
+                      <span className="text-yellow-600 dark:text-yellow-400 mt-2 font-black text-sm truncate max-w-[95px] dark:drop-shadow-[0_0_4px_rgba(250,204,21,0.2)]">
                         {leaderboardEntries[0].user.fullName || leaderboardEntries[0].user.username}
                       </span>
-                      <span className="text-xs text-yellow-300 font-extrabold mt-0.5">
+                      <span className="text-xs text-yellow-600 dark:text-yellow-300 font-extrabold mt-0.5">
                         {leaderboardEntries[0].total_xp} XP
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-yellow-500/25 to-yellow-500/5 border-t border-yellow-500/30 rounded-t-xl h-24 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="text-3xl font-black text-yellow-400 font-heading">1</div>
+                    <div className="w-full bg-gradient-to-t from-yellow-500/25 to-yellow-500/5 border-t border-yellow-500/30 rounded-t-xl h-28 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-4xl font-black text-yellow-600 dark:text-yellow-400 font-heading">1</div>
                     </div>
                   </div>
                 )}
@@ -522,7 +504,7 @@ export const HomePage: React.FC = () => {
                         <UserAvatar
                           src={leaderboardEntries[2].user.avatarUrl}
                           name={leaderboardEntries[2].user.fullName || leaderboardEntries[2].user.username}
-                          className="w-12 h-12 rounded-full border border-amber-600 shadow-lg group-hover:scale-105 transition-all"
+                          className="w-14 h-14 rounded-full border border-amber-600 shadow-lg group-hover:scale-105 transition-all"
                         />
                         {leaderboardEntries[2].user.activeAvatarBorder && (
                           <img
@@ -532,7 +514,7 @@ export const HomePage: React.FC = () => {
                           />
                         )}
                       </div>
-                      <span className="text-amber-600 mt-2 font-bold text-xs truncate max-w-[80px]">
+                      <span className="text-amber-700 dark:text-amber-600 mt-2 font-bold text-xs truncate max-w-[80px]">
                         {leaderboardEntries[2].user.fullName || leaderboardEntries[2].user.username}
                       </span>
                       <span className="text-[10px] text-muted font-semibold mt-0.5">
@@ -540,8 +522,8 @@ export const HomePage: React.FC = () => {
                       </span>
                     </div>
                     {/* Pedestal */}
-                    <div className="w-full bg-gradient-to-t from-amber-700/25 to-amber-700/5 border-t border-amber-700/30 rounded-t-xl h-12 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="text-xl font-black text-amber-600 font-heading">3</div>
+                    <div className="w-full bg-gradient-to-t from-amber-700/25 to-amber-700/5 border-t border-amber-700/30 rounded-t-xl h-14 mt-3 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="text-2xl font-black text-amber-700 dark:text-amber-600 font-heading">3</div>
                     </div>
                   </div>
                 )}
@@ -566,7 +548,7 @@ export const HomePage: React.FC = () => {
                       <UserAvatar
                         src={entry.user.avatarUrl}
                         name={entry.user.fullName || entry.user.username}
-                        className="w-9 h-9 rounded-full"
+                        className="w-10 h-10 rounded-full"
                       />
                       {entry.user.activeAvatarBorder && (
                         <img
@@ -662,7 +644,7 @@ export const HomePage: React.FC = () => {
                     {anime.nama_anime}
                   </h3>
                   <div className="flex items-center gap-2 text-[11px] text-muted mb-2">
-                    <span className="flex items-center gap-0.5 text-yellow-400">
+                    <span className="flex items-center gap-0.5 text-yellow-600 dark:text-yellow-400">
                       <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                       {(anime.rating_anime ?? 0).toFixed(1)}
                     </span>
@@ -730,9 +712,7 @@ export const HomePage: React.FC = () => {
         {/* Grid or Loader */}
         {isLoadingCategory ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
+            <SkeletonGrid count={12} />
           </div>
         ) : categoryItems.length > 0 ? (
           <div className="space-y-8">

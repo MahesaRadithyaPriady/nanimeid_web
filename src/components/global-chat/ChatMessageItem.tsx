@@ -46,7 +46,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
   }
 
   // Bubble styles
-  const bubbleBg = owned ? 'bg-primary/20 border-primary/30' : 'bg-bg-elevated border-border/20';
+  const bubbleBg = owned 
+    ? 'bg-primary/10 border-primary/25 dark:bg-primary/20 dark:border-primary/30' 
+    : 'bg-bg-surface border-border/50 dark:bg-bg-elevated dark:border-border/20';
   const borderRadius = owned ? 'rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm';
 
   const formatWatchSecond = (seconds: number) => {
@@ -57,8 +59,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
 
   const renderParentQuote = (parentMsg: ChatParent) => {
     return (
-      <div className="bg-black/20 border-l-4 border-primary/50 rounded-r-md px-3 py-2 mb-2 text-xs text-text-secondary line-clamp-2">
-        <div className="font-semibold text-primary/80 mb-0.5">{parentMsg.user.profile?.full_name || parentMsg.user.username}</div>
+      <div className="bg-black/5 dark:bg-black/20 border-l-4 border-primary/50 rounded-r-md px-3 py-2 mb-2 text-xs text-text-secondary line-clamp-2">
+        <div className="font-semibold text-pink-600/80 dark:text-primary/80 mb-0.5">{parentMsg.user.profile?.full_name || parentMsg.user.username}</div>
         {parentMsg.is_delete ? (
           <span className="italic">Pesan dihapus</span>
         ) : (
@@ -100,25 +102,25 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
       {/* Action buttons */}
       {owned && (
         <div className="flex-shrink-0 mr-2 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onReply(message)} className="p-1.5 text-text-secondary hover:text-primary rounded-full hover:bg-white/10" title="Balas">
+          <button onClick={() => onReply(message)} className="p-1.5 text-text-secondary hover:text-primary rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="Balas">
             <Reply className="w-4 h-4" />
           </button>
-          <button onClick={() => onDelete(message.id)} className="p-1.5 text-text-secondary hover:text-red-500 rounded-full hover:bg-white/10" title="Hapus">
+          <button onClick={() => onDelete(message.id)} className="p-1.5 text-text-secondary hover:text-red-500 rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="Hapus">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* Message Bubble */}
-      <div className={`max-w-[85%] sm:max-w-[70%] border ${bubbleBg} ${borderRadius} flex flex-col relative`}>
+      <div className={`max-w-[85%] sm:max-w-[70%] border ${bubbleBg} ${borderRadius} flex flex-col relative shadow-sm dark:shadow-none`}>
         
         {/* Author info (only for others) */}
         {!owned && (
           <div className="flex items-baseline gap-2 px-3 pt-2 pb-1 flex-wrap">
-            <span className="font-semibold text-sm text-primary" style={superBadge?.title_color ? { color: superBadge.title_color } : {}}>
+            <span className="font-semibold text-sm text-pink-600 dark:text-primary" style={superBadge?.title_color ? { color: superBadge.title_color } : {}}>
               {user.profile?.full_name || user.username}
             </span>
-            <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full text-text-secondary whitespace-nowrap">
+            <span className="text-[10px] bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded-full text-text-secondary whitespace-nowrap">
               Lv.{levelNumber}
             </span>
           </div>
@@ -142,7 +144,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
 
           {/* IMAGE */}
           {kind === 'IMAGE' && (image_url || content) && (
-            <div className="mt-2 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+            <div className="mt-2 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/40">
               <img src={image_url || content} alt="Shared image" className="max-h-64 object-contain w-full" loading="lazy" />
             </div>
           )}
@@ -156,10 +158,10 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
 
           {/* ANIME_SHARE */}
           {kind === 'ANIME_SHARE' && anime && (
-            <Link to={`/anime/${anime.id}`} className="mt-2 block bg-black/20 hover:bg-black/30 transition-colors border border-white/10 rounded-lg p-2 flex gap-3">
+            <Link to={`/anime/${anime.id}`} className="mt-2 block bg-black/5 hover:bg-black/10 dark:bg-black/20 dark:hover:bg-black/30 transition-colors border border-black/10 dark:border-white/10 rounded-lg p-2 flex gap-3">
               <img src={anime.gambar_anime} alt={anime.nama_anime} className="w-16 h-24 object-cover rounded-md" />
               <div className="flex flex-col justify-center">
-                <span className="text-xs text-primary font-medium mb-1">Berbagi Anime</span>
+                <span className="text-xs text-pink-600 dark:text-primary font-medium mb-1">Berbagi Anime</span>
                 <span className="text-sm font-semibold line-clamp-2">{anime.nama_anime}</span>
                 {anime.rating_anime && <span className="text-xs text-yellow-400 mt-1">★ {anime.rating_anime}</span>}
               </div>
@@ -168,7 +170,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
 
           {/* WATCH_SHARE */}
           {kind === 'WATCH_SHARE' && anime && episode && (
-            <Link to={`/watch/${anime.id}/ep/${episode.nomor_episode}`} className="mt-2 block bg-black/20 hover:bg-black/30 transition-colors border border-white/10 rounded-lg p-2 flex flex-col gap-2 relative overflow-hidden">
+            <Link to={`/watch/${anime.slug || anime.id}/ep/${episode.nomor_episode}`} className="mt-2 block bg-black/5 hover:bg-black/10 dark:bg-black/20 dark:hover:bg-black/30 transition-colors border border-black/10 dark:border-white/10 rounded-lg p-2 flex flex-col gap-2 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
                 {episode.thumbnail_episode && <img src={episode.thumbnail_episode} alt="" className="w-full h-full object-cover blur-sm" />}
               </div>
@@ -180,11 +182,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
                   </div>
                 </div>
                 <div className="flex flex-col justify-center flex-1">
-                  <span className="text-xs text-primary font-medium mb-0.5">Sedang Menonton</span>
+                  <span className="text-xs text-pink-600 dark:text-primary font-medium mb-0.5">Sedang Menonton</span>
                   <span className="text-sm font-semibold truncate">{anime.nama_anime}</span>
                   <span className="text-xs text-text-secondary truncate">Ep {episode.nomor_episode} - {episode.judul_episode}</span>
                   {watch_second !== undefined && watch_second !== null && (
-                    <span className="text-xs text-primary bg-primary/20 px-1.5 py-0.5 rounded w-max mt-1">
+                    <span className="text-xs text-pink-600 bg-primary/10 dark:text-primary dark:bg-primary/20 px-1.5 py-0.5 rounded w-max mt-1">
                       {formatWatchSecond(watch_second)}
                     </span>
                   )}
@@ -203,7 +205,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onRep
       {/* Action buttons for received messages */}
       {!owned && (
         <div className="flex-shrink-0 ml-2 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onReply(message)} className="p-1.5 text-text-secondary hover:text-primary rounded-full hover:bg-white/10" title="Balas">
+          <button onClick={() => onReply(message)} className="p-1.5 text-text-secondary hover:text-primary rounded-full hover:bg-black/5 dark:hover:bg-white/10" title="Balas">
             <Reply className="w-4 h-4" />
           </button>
         </div>
