@@ -221,10 +221,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Handle both JSON stringified and raw string
         return saved.replace(/['"]+/g, '') as 'dark' | 'light';
       }
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-        return 'light';
-      }
     } catch {}
+    // Default to dark mode
     return 'dark';
   })(),
 
