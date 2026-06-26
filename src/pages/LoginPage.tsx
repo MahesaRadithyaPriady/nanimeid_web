@@ -190,7 +190,7 @@ export const LoginPage: React.FC = () => {
             <span className="text-primary drop-shadow-[0_0_20px_rgba(255,102,205,0.6)]">ID</span>
           </h1>
           <p className="text-text-secondary text-base xl:text-lg max-w-xs leading-relaxed mb-12">
-            Portal anime & manga Indonesia terlengkap. Streaming, baca, dan simpan favoritmu.
+            Portal anime & manga terlengkap. Streaming, baca, dan simpan favoritmu.
           </p>
 
           <div className="w-full max-w-[320px] space-y-5">
@@ -228,7 +228,7 @@ export const LoginPage: React.FC = () => {
             <span className="font-heading font-black text-2xl sm:text-3xl tracking-tight">
               <span className="text-text-primary">NANIME</span><span className="text-primary">ID</span>
             </span>
-            <p className="text-muted text-xs mt-1.5 text-center">Portal anime Indonesia</p>
+            <p className="text-muted text-xs mt-1.5 text-center">Portal anime</p>
           </div>
 
           {/* Heading */}
@@ -314,13 +314,6 @@ export const LoginPage: React.FC = () => {
             ))}
           </div>
 
-          {/* Guest link */}
-          <div className="mt-6 sm:mt-8 text-center">
-            <span className="text-xs text-muted/70">Mau lihat-lihat dulu? </span>
-            <Link to="/welcome" className="text-xs font-semibold text-primary hover:text-primary-light transition-colors underline underline-offset-2">
-              Kembali ke Beranda
-            </Link>
-          </div>
         </div>
       </div>
     </div>

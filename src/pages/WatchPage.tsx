@@ -272,7 +272,13 @@ export const WatchPage: React.FC<WatchPageProps> = ({ forceId, forceEpisode, isM
       setShowDownloadDropdown(false);
       return;
     }
-    
+
+    // VIP check — require at least VIP Bronze to download
+    if (!userProfile?.isVip) {
+      addToast('error', 'Perlu minimal VIP Bronze untuk mengunduh video!');
+      return;
+    }
+
     setShowDownloadDropdown(true);
     if (!currentEpisode?.id) return;
     
@@ -2030,14 +2036,14 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
               </div>
 
               {/* Navigation & Download Actions */}
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto">
                 {/* Download Controls */}
                 {currentEpisode && (
                   <div className="relative" ref={downloadMenuRef}>
                     {downloadingState[currentEpisode.id]?.state === 'downloading' ? (
                       <button
                         onClick={() => cancelDownload(currentEpisode.id)}
-                        className="relative flex items-center gap-1.5 px-4 py-2.5 bg-bg-base border border-border/60 text-xs font-bold text-text-primary rounded-xl overflow-hidden hover:border-red-500 hover:text-red-400 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group"
+                        className="relative flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-bg-base border border-border/60 text-xs font-bold text-text-primary rounded-xl overflow-hidden hover:border-red-500 hover:text-red-400 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group flex-1 md:flex-none justify-center md:justify-start"
                         title="Batalkan Unduhan"
                       >
                         {/* Background Progress Bar */}
@@ -2047,7 +2053,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                         />
                         <div className="relative z-10 flex items-center gap-1.5">
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-primary group-hover:text-red-400" />
-                          <span>Mengunduh... {downloadingState[currentEpisode.id]?.progress}%</span>
+                          <span className="truncate">Mengunduh... {downloadingState[currentEpisode.id]?.progress}%</span>
                         </div>
                       </button>
                     ) : isEpisodeDownloaded(currentEpisode.id) ? (
@@ -2062,7 +2068,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                             deleteDownload(currentEpisode.id);
                           }
                         }}
-                        className="flex items-center gap-1.5 px-4 py-2.5 bg-green-500/10 border border-green-500/30 text-xs font-bold text-green-400 rounded-xl hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group/dl"
+                        className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-500/10 border border-green-500/30 text-xs font-bold text-green-400 rounded-xl hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer group/dl flex-1 md:flex-none justify-center md:justify-start"
                         title="Hapus Unduhan"
                       >
                         <Trash2 className="w-3.5 h-3.5 text-green-400 group-hover/dl:text-white" />
@@ -2072,7 +2078,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                       <>
                         <button
                           onClick={handleDownloadClick}
-                          className={`flex items-center gap-1.5 px-4 py-2.5 bg-bg-base hover:bg-bg-elevated border rounded-xl transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer ${
+                          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-bg-base hover:bg-bg-elevated border rounded-xl transition-all active:scale-95 shadow-sm focus:outline-none cursor-pointer flex-1 md:flex-none justify-center md:justify-start ${
                             showDownloadDropdown ? 'border-primary text-primary' : 'border-border/60 hover:border-primary/40 text-text-primary'
                           }`}
                           title="Unduh Episode"
@@ -2083,7 +2089,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                         
                         {/* Quality Dropdown Menu */}
                         {showDownloadDropdown && (
-                          <div className="absolute right-0 bottom-full mb-2 w-48 bg-bg-elevated dark:bg-black/95 border border-border/40 dark:border-white/10 rounded-xl p-2 shadow-2xl z-40 space-y-1 backdrop-blur-md">
+                          <div className="absolute right-0 left-0 sm:left-auto top-full mt-2 sm:top-auto sm:bottom-full sm:mb-2 w-full sm:w-56 bg-bg-elevated dark:bg-black/95 border border-border/40 dark:border-white/10 rounded-xl p-2 shadow-2xl z-40 space-y-1 backdrop-blur-md">
                             <div className="px-2.5 py-1 border-b border-border/40 dark:border-white/10 text-left select-none">
                               <span className="text-[9.5px] font-bold text-text-secondary tracking-wider font-sans">PILIH KUALITAS</span>
                             </div>
@@ -2125,7 +2131,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                     <button
                       disabled={!navigation?.previousEpisode}
                       onClick={() => navigate(`/watch/${id}/ep/${navigation?.previousEpisode?.nomor_episode}`)}
-                      className="flex items-center gap-1.5 px-4 py-2.5 bg-bg-base hover:bg-bg-elevated border border-border/60 hover:border-primary/40 text-xs font-bold text-text-primary rounded-xl transition-all disabled:opacity-40 disabled:hover:bg-bg-base disabled:hover:border-border/60 active:scale-95 shadow-sm focus:outline-none"
+                      className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-bg-base hover:bg-bg-elevated border border-border/60 hover:border-primary/40 text-xs font-bold text-text-primary rounded-xl transition-all disabled:opacity-40 disabled:hover:bg-bg-base disabled:hover:border-border/60 active:scale-95 shadow-sm focus:outline-none flex-1 md:flex-none"
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Sebelumnya</span>
@@ -2134,7 +2140,7 @@ video.removeEventListener('loadedmetadata', handleLoadedMetadata as any);
                     <button
                       disabled={!navigation?.nextEpisode}
                       onClick={() => navigate(`/watch/${id}/ep/${navigation?.nextEpisode?.nomor_episode}`)}
-                      className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none"
+                      className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 bg-primary text-black font-bold text-xs rounded-xl shadow-glow hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:from-border disabled:to-border shadow-sm focus:outline-none flex-1 md:flex-none"
                     >
                       <span>Berikutnya</span>
                       <ArrowRight className="w-3.5 h-3.5" />

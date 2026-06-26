@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Sparkles, Shield, Zap, ArrowRight } from 'lucide-react';
+import { Play, Sparkles, Shield, Zap, ArrowRight, Download } from 'lucide-react';
 
 export const WelcomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ export const WelcomePage: React.FC = () => {
 
         {/* Welcome message */}
         <p className="text-text-secondary text-sm sm:text-base lg:text-lg max-w-xs sm:max-w-sm leading-relaxed mb-8 sm:mb-10">
-          Selamat datang di portal anime Indonesia terlengkap. Streaming, baca, dan simpan favoritmu dalam satu tempat.
+          Selamat datang di portal anime terlengkap. Streaming, baca, dan simpan favoritmu dalam satu tempat.
         </p>
 
         {/* Feature highlights */}
@@ -74,6 +74,40 @@ export const WelcomePage: React.FC = () => {
           <span>Masuk ke NanimeID</span>
           <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 transition-transform group-hover:translate-x-1" />
         </button>
+
+        {/* Download App Buttons */}
+        <div className="w-full max-w-[340px] mt-4 space-y-2.5">
+          <p className="text-[11px] text-muted font-medium text-center">Unduh aplikasi mobile</p>
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            {/* Play Store */}
+            <a
+              href="https://play.google.com/store/apps/details?id=com.nanimeid.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/5 border border-border/50 hover:bg-white/10 hover:border-primary/30 text-text-primary font-bold text-xs sm:text-sm transition-all active:scale-[0.98]"
+            >
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.628L15.392 12l2.306-2.491zM5.864 2.658L16.802 8.99l-2.303 2.303-8.635-8.635z"/>
+              </svg>
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-[9px] text-muted">GET IT ON</span>
+                <span>Google Play</span>
+              </div>
+            </a>
+            {/* APK Direct */}
+            <a
+              href="/nanimeid.apk"
+              download
+              className="flex-1 flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-white/5 border border-border/50 hover:bg-white/10 hover:border-primary/30 text-text-primary font-bold text-xs sm:text-sm transition-all active:scale-[0.98]"
+            >
+              <Download className="w-4 h-4 shrink-0 text-primary" />
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-[9px] text-muted">UNDUH</span>
+                <span>APK Langsung</span>
+              </div>
+            </a>
+          </div>
+        </div>
 
         {/* Feature chips */}
         <div className="mt-6 sm:mt-8 flex flex-wrap justify-center gap-2">

@@ -145,6 +145,12 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     const episodeId = episode.id;
     const addToast = useAppStore.getState().addToast;
 
+    // VIP check — require at least VIP to download
+    if (!useAppStore.getState().userProfile?.isVip) {
+      addToast('error', 'Perlu minimal VIP Bronze untuk mengunduh video!');
+      return;
+    }
+
     // Check if already downloaded or currently downloading
     if (get().isEpisodeDownloaded(episodeId)) {
       addToast('info', 'Episode ini sudah diunduh.');
