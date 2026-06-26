@@ -3,24 +3,11 @@
  * Endpoints: /xp/me, /xp/levels, /xp/rewards/:id/claim, /xp/levels/:id/claim-all, /xp/vouchers
  */
 
-import { useAppStore } from '../stores/useAppStore';
+import { authFetch } from './authFetch';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
-
-async function authFetch(url: string, options: RequestInit = {}) {
-  const state = useAppStore.getState();
-  const token = state.authToken;
-
-  const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  return fetch(url, { ...options, headers });
-}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const data = await res.json();

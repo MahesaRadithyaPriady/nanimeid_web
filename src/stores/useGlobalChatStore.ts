@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAppStore } from './useAppStore';
+import { authHeaders, authFetch } from '../lib/authFetch';
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
@@ -173,16 +174,9 @@ export const useGlobalChatStore = create<GlobalChatState>((set, get) => ({
         });
       } else {
         // Fallback REST if socket not connected yet
-        const token = localStorage.getItem('auth_token');
-        let jwt = '';
-        try { jwt = token ? JSON.parse(token) : ''; } catch { jwt = token || ''; }
-        
-        const headers: Record<string, string> = { Accept: 'application/json' };
-        if (jwt && jwt !== 'null') {
-          headers.Authorization = `Bearer ${jwt}`;
-        }
-        
-        const res = await fetch(`${BASE_URL}/global-chat?limit=50`, { headers });
+        const res = await authFetch(`${BASE_URL}/global-chat?limit=50`, {
+          headers: { ...authHeaders(), Accept: 'application/json' },
+        });
         const data = await res.json();
         if (data.success && data.data) {
           const myId = useAppStore.getState().userProfile?.id;
@@ -240,14 +234,9 @@ export const useGlobalChatStore = create<GlobalChatState>((set, get) => ({
           }
         });
       } else {
-        const token = localStorage.getItem('auth_token');
-        let jwt = '';
-        try { jwt = token ? JSON.parse(token) : ''; } catch { jwt = token || ''; }
-        
-        const headers: Record<string, string> = { Accept: 'application/json' };
-        if (jwt && jwt !== 'null') headers.Authorization = `Bearer ${jwt}`;
-
-        const res = await fetch(`${BASE_URL}/global-chat?before_id=${oldestId}&limit=20`, { headers });
+        const res = await authFetch(`${BASE_URL}/global-chat?before_id=${oldestId}&limit=20`, {
+          headers: { ...authHeaders(), Accept: 'application/json' },
+        });
         const data = await res.json();
         if (data.success && data.data) {
           const myId = useAppStore.getState().userProfile?.id;

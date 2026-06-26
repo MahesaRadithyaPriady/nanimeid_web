@@ -67,10 +67,11 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-// Helper to route urls through the local proxy for development
+// Helper to route urls through the local proxy for development only
 function getProxyUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith('https://cdn-stable.nanimeid.xyz')) {
+  // Only use proxy in dev mode — production uses CDN URL directly
+  if (import.meta.env.DEV && url.startsWith('https://cdn-stable.nanimeid.xyz')) {
     return url.replace('https://cdn-stable.nanimeid.xyz', '/cdn-proxy');
   }
   return url;
@@ -81,7 +82,7 @@ async function fetchBlob(url?: string): Promise<Blob | null> {
   if (!url) return null;
   const proxyUrl = getProxyUrl(url);
   try {
-    const res = await fetch(proxyUrl!);
+    const res = await fetch(proxyUrl!, { referrerPolicy: 'no-referrer' });
     if (res.ok) return await res.blob();
   } catch (e) {
     console.error('Failed to fetch blob from url:', url, e);
@@ -178,7 +179,10 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
 
       // 2. Fetch video with progress monitoring
       const proxyDownloadUrl = getProxyUrl(downloadUrl) || downloadUrl;
-      const response = await fetch(proxyDownloadUrl, { signal: controller.signal });
+      const response = await fetch(proxyDownloadUrl, {
+        signal: controller.signal,
+        referrerPolicy: 'no-referrer',
+      });
       if (!response.ok) {
         throw new Error(`Gagal mengunduh file video (${response.status})`);
       }

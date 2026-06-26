@@ -15,28 +15,13 @@ import type {
   ApiBadgeActiveResponse,
 } from '../types';
 import { useAppStore } from '../stores/useAppStore';
+import { authHeaders, authFetch } from './authFetch';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
 const STORE_PREFIX = '/store';
 const ROOT_URL = (() => {
   try { return new URL(BASE_URL).origin; } catch { return BASE_URL; }
 })();
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-  return {};
-}
 
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const urlStr = path.startsWith('http') ? path : `${BASE_URL}${path}`;
@@ -48,7 +33,7 @@ async function get<T>(path: string, params?: Record<string, string | number | un
       }
     });
   }
-  const res = await fetch(url.toString(), {
+  const res = await authFetch(url.toString(), {
     headers: { ...authHeaders(), Accept: 'application/json' },
   });
   const data = await res.json().catch(() => ({}));
@@ -58,7 +43,7 @@ async function get<T>(path: string, params?: Record<string, string | number | un
 
 async function post<T>(path: string, body: any): Promise<T> {
   const urlStr = path.startsWith('http') ? path : `${BASE_URL}${path}`;
-  const res = await fetch(urlStr, {
+  const res = await authFetch(urlStr, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
@@ -74,7 +59,7 @@ async function post<T>(path: string, body: any): Promise<T> {
 
 async function patch<T>(path: string, body: any): Promise<T> {
   const urlStr = path.startsWith('http') ? path : `${BASE_URL}${path}`;
-  const res = await fetch(urlStr, {
+  const res = await authFetch(urlStr, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
@@ -291,16 +276,10 @@ export async function uploadQrisProof(requestId: number, file: File) {
   const formData = new FormData();
   formData.append('file', file);
   
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try { jwt = JSON.parse(token); } catch { jwt = token; }
-  }
-  
-  const res = await fetch(`${BASE_URL}/payments/manual/qris/requests/${requestId}/proof`, {
+  const res = await authFetch(`${BASE_URL}/payments/manual/qris/requests/${requestId}/proof`, {
     method: 'POST',
-    headers: (jwt && jwt !== 'null') ? { Authorization: `Bearer ${jwt}` } : {},
-    body: formData
+    headers: { ...authHeaders() },
+    body: formData,
   });
   
   const data = await res.json().catch(() => ({}));

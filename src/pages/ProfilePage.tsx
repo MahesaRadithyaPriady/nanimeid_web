@@ -219,6 +219,10 @@ export const ProfilePage: React.FC = () => {
   };
 
   const handleAvatarChange = () => {
+    if (!userProfile?.isVip) {
+      addToast('error', 'Fitur mengunggah foto profil hanya untuk pengguna Premium (VIP)!');
+      return;
+    }
     avatarInputRef.current?.click();
   };
 
@@ -320,7 +324,13 @@ export const ProfilePage: React.FC = () => {
           </div>
         )}
         <button
-          onClick={() => bannerInputRef.current?.click()}
+          onClick={() => {
+            if (!userProfile?.isVip) {
+              addToast('error', 'Fitur mengunggah banner hanya untuk pengguna Premium (VIP)!');
+              return;
+            }
+            bannerInputRef.current?.click();
+          }}
           className="absolute bottom-3 right-3 px-3 py-1.5 bg-black/75 hover:bg-black/90 text-white rounded-xl text-[10px] font-bold border border-white/10 hover:border-primary/50 transition-all flex items-center gap-1.5 active:scale-95 shadow-lg focus:outline-none"
         >
           <Edit3 className="w-3 h-3" />

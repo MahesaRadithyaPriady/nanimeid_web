@@ -1,19 +1,6 @@
-import { useAppStore } from '../stores/useAppStore';
+import { authFetch } from './authFetch';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
-
-async function authFetch(url: string, options: RequestInit = {}) {
-  const state = useAppStore.getState();
-  const token = state.authToken;
-  
-  const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  return fetch(url, { ...options, headers });
-}
 
 export interface WatchLiteProgressResponse {
   status: number;

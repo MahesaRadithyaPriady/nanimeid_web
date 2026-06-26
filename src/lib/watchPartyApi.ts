@@ -1,23 +1,8 @@
 import type { ApiAnime, ApiEpisode } from '../types';
+import { authHeaders, authFetch } from './authFetch';
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-  return {};
-}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
@@ -41,7 +26,7 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
     });
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await authFetch(url.toString(), {
     headers: {
       ...authHeaders(),
       Accept: 'application/json',
@@ -55,7 +40,7 @@ async function sendRequest<T>(
   path: string,
   body?: any
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await authFetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       ...authHeaders(),

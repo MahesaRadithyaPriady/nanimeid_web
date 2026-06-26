@@ -1,25 +1,10 @@
 import type { ApiWaifu, ApiWaifuVoteCooldownResponse } from '../types';
+import { authHeaders, authFetch } from './authFetch';
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
 
 const WAIFU_PREFIX = '/waifu';
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-  return {};
-}
 
 async function get<T>(path: string, params?: Record<string, any>): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
@@ -31,7 +16,7 @@ async function get<T>(path: string, params?: Record<string, any>): Promise<T> {
     });
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await authFetch(url.toString(), {
     method: 'GET',
     headers: {
       ...authHeaders(),
@@ -85,7 +70,7 @@ export async function getWaifuDetail(id: number): Promise<{ status: number; mess
 }
 
 export async function voteWaifu(id: number, fingerprint_hash: string): Promise<any> {
-  const res = await fetch(`${BASE_URL}${WAIFU_PREFIX}/${id}/vote`, {
+  const res = await authFetch(`${BASE_URL}${WAIFU_PREFIX}/${id}/vote`, {
     method: 'POST',
     headers: {
       ...authHeaders(),
@@ -106,7 +91,7 @@ export async function checkWaifuCooldown(fingerprint_hash: string): Promise<any>
   // Similarly, returning the raw fetch response for non-ok to handle 400 safely.
   const url = new URL(`${BASE_URL}${WAIFU_PREFIX}/vote/cooldown`);
   url.searchParams.append('fingerprint_hash', fingerprint_hash);
-  const res = await fetch(url.toString(), {
+  const res = await authFetch(url.toString(), {
     method: 'GET',
     headers: {
       ...authHeaders(),

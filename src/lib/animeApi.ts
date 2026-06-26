@@ -19,21 +19,9 @@ import type {
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
 
-/* ─── Helpers ──────────────────────────────────────────────────────── */
+import { authHeaders, authFetch } from './authFetch';
 
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token'); // zustand stores with JSON.stringify
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') return { Authorization: `Bearer ${jwt}` };
-  return {};
-}
+/* ─── Helpers ──────────────────────────────────────────────────────── */
 
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
@@ -45,14 +33,9 @@ async function get<T>(path: string, params?: Record<string, string | number | un
     });
   }
 
-  let headers: Record<string, string> = { ...authHeaders(), Accept: 'application/json' };
-  let res = await fetch(url.toString(), { headers });
-
-  if (res.status === 401 && headers.Authorization) {
-    console.warn('Unauthorized token, retrying GET request without token...');
-    headers = { Accept: 'application/json' };
-    res = await fetch(url.toString(), { headers });
-  }
+  const res = await authFetch(url.toString(), {
+    headers: { ...authHeaders(), Accept: 'application/json' },
+  });
 
   const data = await res.json().catch(() => ({}));
 
@@ -491,13 +474,13 @@ export async function searchByImage(file?: File, imageUrl?: string): Promise<Ima
   if (file) {
     const formData = new FormData();
     formData.append('image', file);
-    res = await fetch(url.toString(), {
+    res = await authFetch(url.toString(), {
       method: 'POST',
       headers: { ...authHeaders(), Accept: 'application/json' },
       body: formData,
     });
   } else if (imageUrl) {
-    res = await fetch(url.toString(), {
+    res = await authFetch(url.toString(), {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ image_url: imageUrl }),
@@ -659,23 +642,13 @@ export async function saveEpisodeProgress(
   progressSeconds: number,
   isCompleted: boolean = false
 ): Promise<any> {
-  const token = localStorage.getItem('auth_token'); // zustand auth token representation
-  let jwt: string | null = null;
-  if (token) {
-    try { jwt = JSON.parse(token); } catch { jwt = token; }
-  }
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-  if (jwt) {
-    headers['Authorization'] = `Bearer ${jwt}`;
-  }
-
-  const res = await fetch(`${BASE_URL}/episode/${episodeId}/progress`, {
+  const res = await authFetch(`${BASE_URL}/episode/${episodeId}/progress`, {
     method: 'POST',
-    headers,
+    headers: {
+      ...authHeaders(),
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify({
       progress_watching: Math.round(progressSeconds),
       is_completed: isCompleted
@@ -701,7 +674,7 @@ async function sendRequest<T>(
   path: string,
   body?: any
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await authFetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       ...authHeaders(),

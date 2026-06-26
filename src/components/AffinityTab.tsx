@@ -8,6 +8,7 @@ import type { ApiAffinityRecord, AffinityRelationType } from '../types';
 import { Link } from 'react-router-dom';
 import { UserAvatar } from './ui/UserAvatar';
 import { Modal } from './ui/Modal';
+import { BorderImage } from './ui/BorderImage';
 import { resolveSrc } from '../lib/utils';
 
 export const AffinityTab: React.FC = () => {
@@ -155,9 +156,10 @@ export const AffinityTab: React.FC = () => {
         <Link to={`/profile/${user.id}`} className="shrink-0 relative">
           <UserAvatar src={user.avatar_url || ''} name={user.full_name || user.username} className="w-10 h-10 rounded-full" />
           {user.avatar_border_active_url && (
-            <div 
-              className="absolute inset-0 z-10 pointer-events-none bg-cover bg-center scale-110"
-              style={{ backgroundImage: `url(${user.avatar_border_active_url})` }}
+            <BorderImage
+              src={user.avatar_border_active_url}
+              alt="border"
+              className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none scale-110"
             />
           )}
         </Link>
@@ -226,9 +228,10 @@ export const AffinityTab: React.FC = () => {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center group">
             <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-bg-surface bg-bg-base shadow-glow-sm shadow-primary/50 flex items-center justify-center z-10">
               {userProfile?.avatarBorderActive && (
-                <div 
-                  className="absolute inset-0 z-20 pointer-events-none bg-cover bg-center scale-[1.2]"
-                  style={{ backgroundImage: `url(${resolveSrc(userProfile.avatarBorderActive.image_url)})` }}
+                <BorderImage
+                  src={userProfile.avatarBorderActive.image_url}
+                  alt="border"
+                  className="absolute inset-0 w-full h-full object-contain z-20 pointer-events-none scale-[1.2]"
                 />
               )}
               <UserAvatar src={userProfile?.avatarUrl || ''} name={userProfile?.name || ''} className="w-full h-full rounded-full" />
@@ -253,9 +256,10 @@ export const AffinityTab: React.FC = () => {
                 >
                   <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 ${pos.borderClass} ${pos.bgClass} shadow-md flex items-center justify-center`}>
                      {otherUser.avatar_border_active_url && (
-                        <div 
-                          className="absolute inset-0 z-20 pointer-events-none bg-cover bg-center scale-[1.2]"
-                          style={{ backgroundImage: `url(${otherUser.avatar_border_active_url})` }}
+                        <BorderImage
+                          src={otherUser.avatar_border_active_url}
+                          alt="border"
+                          className="absolute inset-0 w-full h-full object-contain z-20 pointer-events-none scale-[1.2]"
                         />
                       )}
                     <UserAvatar src={otherUser.avatar_url || ''} name={otherUser.full_name || otherUser.username} className="w-full h-full rounded-full" />

@@ -4,28 +4,13 @@ import type {
   ApiAvatarBorderActiveResponse,
   ApiAvatarBorderVipEligibilityResponse,
 } from '../types';
+import { authHeaders, authFetch } from './authFetch';
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
 
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-  return {};
-}
-
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await authFetch(`${BASE_URL}${path}`, {
     headers: { ...authHeaders(), Accept: 'application/json' },
   });
   const data = await res.json().catch(() => ({}));
@@ -36,7 +21,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await authFetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
     body: body ? JSON.stringify(body) : undefined,

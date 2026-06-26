@@ -9,24 +9,10 @@ import type {
   ApiCollectionLeaderboardItem,
 } from '../types';
 
+import { authHeaders, authFetch } from './authFetch';
+
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000';
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  let jwt: string | null = null;
-  if (token) {
-    try {
-      jwt = JSON.parse(token);
-    } catch {
-      jwt = token;
-    }
-  }
-  if (jwt && jwt !== 'null' && jwt !== 'undefined') {
-    return { Authorization: `Bearer ${jwt}` };
-  }
-  return {};
-}
 
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
@@ -38,14 +24,9 @@ async function get<T>(path: string, params?: Record<string, string | number | un
     });
   }
 
-  let headers: Record<string, string> = { ...authHeaders(), Accept: 'application/json' };
-  let res = await fetch(url.toString(), { headers });
-
-  if (res.status === 401 && headers.Authorization) {
-    console.warn('Unauthorized token, retrying request without token...');
-    headers = { Accept: 'application/json' };
-    res = await fetch(url.toString(), { headers });
-  }
+  const res = await authFetch(url.toString(), {
+    headers: { ...authHeaders(), Accept: 'application/json' },
+  });
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -59,7 +40,7 @@ async function sendRequest<T>(
   path: string,
   body?: any
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await authFetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       ...authHeaders(),
